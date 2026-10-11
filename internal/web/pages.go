@@ -208,14 +208,15 @@ func (s *Server) handlePresetDelete(w http.ResponseWriter, r *http.Request) {
 
 type settingsData struct {
 	page
-	Format string
-	Size   int
-	ECC    string
-	Levels []string
+	APIToken string
+	Format   string
+	Size     int
+	ECC      string
+	Levels   []string
 }
 
 func (s *Server) settingsPage(r *http.Request) settingsData {
-	d := settingsData{page: s.newPage(r, "Settings", "settings"), Levels: []string{"L", "M", "Q", "H"}}
+	d := settingsData{page: s.newPage(r, "Settings", "settings"), Levels: []string{"L", "M", "Q", "H"}, APIToken: s.APIToken()}
 	design, e := s.defaults(r)
 	d.Format, d.Size, d.ECC = e.Format, e.Size, design.ECC
 	return d
@@ -227,6 +228,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case q.Has("saved"):
 		d.Flash = "Settings saved."
+	case q.Has("token"):
+		d.Flash = "New API token created. Clients using the old token must be updated."
 	case q.Has("restored"):
 		var codes, presets, logos int
 		fmt.Sscanf(q.Get("restored"), "%d,%d,%d", &codes, &presets, &logos)

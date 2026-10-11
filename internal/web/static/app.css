@@ -260,3 +260,5 @@ input[type="file"] { font: inherit; font-size: 13px; color: var(--muted); max-wi
 .help pre { background: var(--surface-2); padding: 10px 12px; border-radius: 8px; overflow-x: auto; }
 code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 .field-list { padding-left: 18px; margin: 4px 0; color: var(--muted); }
+
+.mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 13px; }

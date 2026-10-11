@@ -39,6 +39,19 @@
 </form>
 
 <section class="panel">
+  <h2>API</h2>
+  <p>Scripts and other programs can use the local REST API at <code>/api/v1</code>. Send this token as <code>Authorization: Bearer &lt;token&gt;</code>. The full description is at <a href="/api/v1/openapi.json">/api/v1/openapi.json</a>.</p>
+  <div class="field">
+    <label for="api_token">API token</label>
+    <input id="api_token" type="text" readonly value="{{.APIToken}}" spellcheck="false" class="mono">
+  </div>
+  <form method="post" action="/settings/api-token" data-confirm="Create a new token? Programs using the current token will stop working until you update them.">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="actions"><button class="btn" type="submit">Create new token</button></div>
+  </form>
+</section>
+
+<section class="panel">
   <h2>Backup</h2>
   <p>Download your library, presets, uploaded logos and settings as one file.</p>
   <a class="btn" href="/backup">Download backup</a>

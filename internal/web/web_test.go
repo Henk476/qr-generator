@@ -524,3 +524,30 @@ func TestBackupAndRestore(t *testing.T) {
 	wantStatus(t, rec, http.StatusUnprocessableEntity)
 	wantBody(t, rec, "Restore failed: not a backup file")
 }
+
+func TestAPIMountedWithToken(t *testing.T) {
+	a := newTestApp(t)
+	tok := a.srv.APIToken()
+	if len(tok) != 64 {
+		t.Fatalf("token %q", tok)
+	}
+	wantBody(t, a.get("/settings"), tok, "/api/v1/openapi.json")
+
+	// API calls need the bearer token, not the form token.
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/codes", strings.NewReader(`{"type":"url","fields":{"url":"a.com"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	wantStatus(t, a.do(req), http.StatusUnauthorized)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/codes", strings.NewReader(`{"type":"url","fields":{"url":"a.com"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tok)
+	wantStatus(t, a.do(req), http.StatusCreated)
+
+	// Regenerating invalidates the old token.
+	wantStatus(t, a.post("/settings/api-token", nil), http.StatusSeeOther)
+	if a.srv.APIToken() == tok {
+		t.Error("token unchanged")
+	}
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/codes", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	wantStatus(t, a.do(req), http.StatusUnauthorized)
+}

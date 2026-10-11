@@ -15,8 +15,10 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/Henk476/qr-generator/internal/api"
 	"github.com/Henk476/qr-generator/internal/encode"
 	"github.com/Henk476/qr-generator/internal/logo"
 	"github.com/Henk476/qr-generator/internal/store"
@@ -44,11 +46,21 @@ type Server struct {
 	pages     map[string]*template.Template
 	csrf      string
 	options   *designOptions
+	apiToken  atomic.Pointer[string]
 	logoCache sync.Map // asset ID -> decoded image.Image; assets never change
 	handler   http.Handler
 }
 
-const csrfSettingKey = "csrf_token"
+const (
+	csrfSettingKey = "csrf_token"
+	apiSettingKey  = "api_token"
+)
+
+func newToken() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
 
 // New builds the UI handler.
 func New(ctx context.Context, st *store.Store, opts Options) (*Server, error) {
@@ -62,13 +74,22 @@ func New(ctx context.Context, st *store.Store, opts Options) (*Server, error) {
 		return nil, err
 	}
 	if s.csrf == "" {
-		b := make([]byte, 32)
-		rand.Read(b)
-		s.csrf = hex.EncodeToString(b)
+		s.csrf = newToken()
 		if err := st.SetSetting(ctx, csrfSettingKey, s.csrf); err != nil {
 			return nil, err
 		}
 	}
+	token, err := st.GetSetting(ctx, apiSettingKey, "")
+	if err != nil {
+		return nil, err
+	}
+	if token == "" {
+		token = newToken()
+		if err := st.SetSetting(ctx, apiSettingKey, token); err != nil {
+			return nil, err
+		}
+	}
+	s.apiToken.Store(&token)
 
 	mux := http.NewServeMux()
 	static, _ := fs.Sub(staticFS, "static")
@@ -94,6 +115,8 @@ func New(ctx context.Context, st *store.Store, opts Options) (*Server, error) {
 	mux.HandleFunc("POST /bulk", s.handleBulkPost)
 	mux.HandleFunc("GET /backup", s.handleBackup)
 	mux.HandleFunc("POST /restore", s.handleRestore)
+	mux.HandleFunc("POST /settings/api-token", s.handleNewAPIToken)
+	mux.Handle(api.Prefix+"/", api.New(st, api.Options{Token: s.APIToken, Assets: s.assetLoader}))
 
 	s.handler = s.secure(mux)
 	return s, nil
@@ -119,16 +142,21 @@ func (s *Server) secure(next http.Handler) http.Handler {
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Cross-Origin-Resource-Policy", "same-origin")
 
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			next.ServeHTTP(w, r)
+			return
+		}
+		limit := int64(logo.MaxBytes + 1<<20) // room for a logo or CSV upload
+		if r.URL.Path == "/restore" {
+			limit = maxRestoreBytes + 1<<20
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
+		// The API authenticates with a bearer token instead of the form token.
+		if !strings.HasPrefix(r.URL.Path, api.Prefix+"/") {
 			if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 				http.Error(w, "cross-site request refused", http.StatusForbidden)
 				return
 			}
-			limit := int64(logo.MaxBytes + 1<<20) // room for a logo or CSV upload
-			if r.URL.Path == "/restore" {
-				limit = maxRestoreBytes + 1<<20
-			}
-			r.Body = http.MaxBytesReader(w, r.Body, limit)
 			if subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(s.csrf)) != 1 {
 				http.Error(w, "invalid or missing form token: reload the page and try again", http.StatusForbidden)
 				return
@@ -213,4 +241,18 @@ func parsePages() (map[string]*template.Template, error) {
 	}
 	pages["preview"] = base
 	return pages, nil
+}
+
+// APIToken returns the current REST API token.
+func (s *Server) APIToken() string { return *s.apiToken.Load() }
+
+// handleNewAPIToken replaces the API token; existing API clients stop working.
+func (s *Server) handleNewAPIToken(w http.ResponseWriter, r *http.Request) {
+	token := newToken()
+	if err := s.store.SetSetting(r.Context(), apiSettingKey, token); err != nil {
+		s.serverError(w, err)
+		return
+	}
+	s.apiToken.Store(&token)
+	http.Redirect(w, r, "/settings?token", http.StatusSeeOther)
 }
