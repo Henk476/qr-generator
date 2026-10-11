@@ -11,11 +11,9 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"time"
 
-	"github.com/Henk476/qr-generator/internal/store"
 	"github.com/Henk476/qr-generator/internal/web"
 )
 
@@ -23,7 +21,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	addr := fs.String("addr", "127.0.0.1:8080", "address to listen on; keep it on 127.0.0.1 unless you know you need otherwise")
-	dataDir := fs.String("data-dir", "", "where the library and settings are stored (default: <user config dir>/canute-qr)")
+	dataDir := fs.String("data-dir", "", dataDirUsage)
 	open := fs.Bool("open", false, "open the UI in your default browser")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -40,18 +38,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	dir := *dataDir
-	if dir == "" {
-		cfg, err := os.UserConfigDir()
-		if err != nil {
-			return fail(fmt.Errorf("cannot find a config directory, use --data-dir: %w", err))
-		}
-		dir = filepath.Join(cfg, "canute-qr")
-	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fail(err)
-	}
-	st, err := store.Open(filepath.Join(dir, "canute.db"))
+	st, dir, err := openStore(*dataDir)
 	if err != nil {
 		return fail(err)
 	}

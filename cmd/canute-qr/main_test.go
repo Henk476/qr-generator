@@ -1,7 +1,9 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
+	"context"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -196,5 +198,63 @@ func TestGenerateBarcodes(t *testing.T) {
 	code, _, stderr := runCLI("generate", "--type", "barcode", "--symbology", "ean13", "--data", "5901234123458", "-o", filepath.Join(dir, "b.png"))
 	if code != 1 || !strings.Contains(stderr, "check digit") {
 		t.Errorf("bad check digit: exit %d %s", code, stderr)
+	}
+}
+
+func TestBatchCommand(t *testing.T) {
+	dir := t.TempDir()
+	csvPath := filepath.Join(dir, "codes.csv")
+	os.WriteFile(csvPath, []byte("Website,name\nexample.com/a,First\nexample.com/b,Second\njavascript://x,Bad\n"), 0o644)
+	out := filepath.Join(dir, "codes.zip")
+	code, _, stderr := runCLI("batch", "--csv", csvPath, "--type", "url", "--map", "website=url", "--format", "svg", "--shape", "dots", "-o", out)
+	if code != 1 || !strings.Contains(stderr, "2 codes, 0 with warnings, 1 failed") || !strings.Contains(stderr, "line 4: error") {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	zr, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+	var names []string
+	for _, f := range zr.File {
+		names = append(names, f.Name)
+	}
+	if strings.Join(names, ",") != "first.svg,second.svg,report.csv" {
+		t.Errorf("zip has %v", names)
+	}
+
+	code, _, stderr = runCLI("batch", "--csv", csvPath, "-o", out)
+	if code != 1 || !strings.Contains(stderr, "unknown CSV columns: Website") {
+		t.Errorf("unmapped column: exit %d %s", code, stderr)
+	}
+	code, _, _ = runCLI("batch", "--csv", csvPath)
+	if code != 1 {
+		t.Errorf("missing -o: exit %d", code)
+	}
+}
+
+func TestBackupRestoreCommands(t *testing.T) {
+	src, dst := t.TempDir(), t.TempDir()
+	st, _, err := openStore(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.SetSetting(context.Background(), "default_size", "640")
+	st.Close()
+
+	archive := filepath.Join(t.TempDir(), "backup.zip")
+	if code, _, stderr := runCLI("backup", "--data-dir", src, "-o", archive); code != 0 {
+		t.Fatalf("backup: exit %d %s", code, stderr)
+	}
+	if code, _, stderr := runCLI("restore", "--data-dir", dst, archive); code != 0 || !strings.Contains(stderr, "restored 0 codes") {
+		t.Fatalf("restore: exit %d %s", code, stderr)
+	}
+	st, _, _ = openStore(dst)
+	defer st.Close()
+	if v, _ := st.GetSetting(context.Background(), "default_size", ""); v != "640" {
+		t.Errorf("restored setting = %q", v)
+	}
+	if code, _, _ := runCLI("restore", "--data-dir", dst, filepath.Join(dst, "missing.zip")); code != 1 {
+		t.Errorf("missing backup: exit %d", code)
 	}
 }

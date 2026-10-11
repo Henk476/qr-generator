@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Henk476/qr-generator/internal/encode"
+	"github.com/Henk476/qr-generator/internal/generate"
 	"github.com/Henk476/qr-generator/internal/store"
 	"github.com/Henk476/qr-generator/internal/verify"
 )
@@ -326,12 +327,12 @@ func TestDefaultNameAndSlug(t *testing.T) {
 	fields := map[string]string{"url": "example.com", "first": "Canute", "last": "Knutsson"}
 	for _, tt := range tests {
 		ty, _ := encode.Lookup(tt.typ)
-		if got := defaultName(ty, fields); got != tt.want {
+		if got := generate.DefaultName(ty, fields); got != tt.want {
 			t.Errorf("defaultName(%s) = %q, want %q", tt.typ, got, tt.want)
 		}
 	}
 	for in, want := range map[string]string{"Hello, World!": "hello-world", "日本": "qr-code", "--a--": "a"} {
-		if got := slug(in); got != want {
+		if got := generate.Slug(in); got != want {
 			t.Errorf("slug(%q) = %q, want %q", in, got, want)
 		}
 	}

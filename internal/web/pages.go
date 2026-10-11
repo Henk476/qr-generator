@@ -114,7 +114,7 @@ func (s *Server) handleCodeImage(w http.ResponseWriter, r *http.Request) {
 	}
 	name := ""
 	if q.Has("download") {
-		name = slug(c.Name) + "." + format.Ext()
+		name = generate.Slug(c.Name) + "." + format.Ext()
 	}
 	writeImage(w, buf.Bytes(), format, name)
 }

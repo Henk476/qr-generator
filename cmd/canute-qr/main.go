@@ -1,4 +1,4 @@
-// Command canute-qr generates static QR codes locally.
+// Command canute-qr generates static QR codes and barcodes locally.
 package main
 
 import (
@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"image"
 	"io"
 	"os"
 	"sort"
@@ -14,7 +13,6 @@ import (
 
 	"github.com/Henk476/qr-generator/internal/encode"
 	"github.com/Henk476/qr-generator/internal/generate"
-	"github.com/Henk476/qr-generator/internal/logo"
 	"github.com/Henk476/qr-generator/internal/render"
 )
 
@@ -29,12 +27,15 @@ const usageText = `Canute's QR Generator: static QR codes, made locally. No ads,
 
 Usage:
   canute-qr serve [flags]      start the web UI (default http://127.0.0.1:8080)
-  canute-qr generate [flags]   create a QR code image
+  canute-qr generate [flags]   create one QR code or barcode image
+  canute-qr batch [flags]      create many codes from a CSV file into a ZIP
+  canute-qr backup -o FILE     back up the library, presets and settings
+  canute-qr restore FILE       replace the library, presets and settings from a backup
   canute-qr types              list content types and their fields
   canute-qr styles             list shapes, frames, fonts and logo icons
   canute-qr version            print the version
 
-Run "canute-qr generate -h" for generate flags.
+Run "canute-qr COMMAND -h" for a command's flags.
 `
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -47,6 +48,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runServe(args[1:], stdout, stderr)
 	case "generate":
 		return runGenerate(args[1:], stdout, stderr)
+	case "batch":
+		return runBatch(args[1:], stdout, stderr)
+	case "backup":
+		return runBackup(args[1:], stdout, stderr)
+	case "restore":
+		return runRestore(args[1:], stdout, stderr)
 	case "types":
 		printTypes(stdout)
 		return 0
@@ -64,70 +71,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 2
 }
 
-// generalFlags are listed first in "generate -h", before the content fields.
-var generalFlags = []string{
-	"type", "data", "o", "format", "size", "quality", "page", "print-size",
-	"ecc", "qr-version", "quiet-zone", "fg", "bg", "gradient", "fg2", "gradient-angle",
-	"shape", "eye-border", "eye-center", "eye-border-color", "eye-center-color",
-	"logo", "logo-size", "logo-circle", "logo-keep-modules",
-	"frame", "frame-text", "frame-font", "frame-color", "frame-text-color",
-	"no-verify", "strict",
-}
-
-func optionValues(opts []render.Option) string {
-	var vs []string
-	for _, o := range opts {
-		if o.Value != "" {
-			vs = append(vs, o.Value)
-		}
-	}
-	return strings.Join(vs, ", ")
-}
-
-func runGenerate(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("generate", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	d := generate.DefaultDesign()
-	var (
-		typeName  = fs.String("type", "url", `content type (see "canute-qr types")`)
-		data      = fs.String("data", "", "value for the type's main field, e.g. the URL, text or phone number")
-		out       = fs.String("o", "", `output file, or "-" for stdout (required)`)
-		formatStr = fs.String("format", "", "png, jpeg, svg, pdf or eps (default: from the -o extension)")
-		size      = fs.Int("size", 1024, fmt.Sprintf("image width in px for png, jpeg and svg (%d-%d)", render.MinSize, render.MaxSize))
-		quality   = fs.Int("quality", 90, "JPEG quality (1-100)")
-		page      = fs.String("page", "fit", "PDF page: fit, a4 or letter")
-		printMM   = fs.Float64("print-size", 50, fmt.Sprintf("printed width in mm for pdf and eps (%d-%d)", render.MinPrintMM, render.MaxPrintMM))
-		logoArg   = fs.String("logo", "", `logo: a PNG, JPEG or SVG file, or icon:NAME (see "canute-qr styles")`)
-		noVerify  = fs.Bool("no-verify", false, "skip the scannability check")
-		strict    = fs.Bool("strict", false, "fail instead of warning when the code may not scan")
-	)
-	fs.StringVar(&d.ECC, "ecc", d.ECC, "error correction level: L, M, Q or H (H is used automatically with a logo)")
-	fs.IntVar(&d.Version, "qr-version", 0, "force QR version 1-40 (default: smallest that fits)")
-	fs.IntVar(&d.QuietZone, "quiet-zone", d.QuietZone, "light border width in modules (0-10)")
-	fs.StringVar(&d.Foreground, "fg", d.Foreground, "foreground color (#rrggbb or #rrggbbaa)")
-	fs.StringVar(&d.Background, "bg", d.Background, `background color (#rrggbb, #rrggbbaa or "transparent")`)
-	fs.StringVar(&d.Gradient, "gradient", "", "foreground gradient: linear or radial (from --fg to --fg2)")
-	fs.StringVar(&d.Foreground2, "fg2", "", "gradient end color")
-	fs.IntVar(&d.GradientAngle, "gradient-angle", 0, "linear gradient angle in degrees (0 = left to right, 90 = top to bottom)")
-	fs.StringVar(&d.Module, "shape", "", "module shape: "+optionValues(render.ModuleShapes))
-	fs.StringVar(&d.EyeOuter, "eye-border", "", "finder border shape: "+optionValues(render.EyeOuterShapes))
-	fs.StringVar(&d.EyeInner, "eye-center", "", "finder center shape: "+optionValues(render.EyeInnerShapes))
-	fs.StringVar(&d.EyeOuterColor, "eye-border-color", "", "finder border color (default: foreground)")
-	fs.StringVar(&d.EyeInnerColor, "eye-center-color", "", "finder center color (default: foreground)")
-	fs.IntVar(&d.LogoSize, "logo-size", generate.DefaultLogoSize, "logo width as a percentage of the code (10-30)")
-	fs.BoolVar(&d.LogoCircle, "logo-circle", false, "clip the logo to a circle")
-	fs.BoolVar(&d.LogoKeepModules, "logo-keep-modules", false, "draw modules behind the logo instead of clearing them")
-	fs.StringVar(&d.Frame, "frame", "", "frame: "+optionValues(render.Frames))
-	fs.StringVar(&d.FrameText, "frame-text", "", fmt.Sprintf("frame phrase, up to %d characters (default %q)", render.MaxFrameText, generate.DefaultFrameText))
-	fs.StringVar(&d.FrameFont, "frame-font", "", "frame font: "+optionValues(render.Fonts))
-	fs.StringVar(&d.FrameColor, "frame-color", "", "frame color (default: foreground)")
-	fs.StringVar(&d.FrameTextColor, "frame-text-color", "", "color of text on a filled frame band (default: white)")
-	fieldFlags := map[string]*string{}
-	for name, usage := range fieldUsages() {
-		fieldFlags[name] = fs.String(name, "", usage)
-	}
-	fs.Usage = func() { generateUsage(fs) }
-
+// parseFlags parses args, mapping -h to exit code 0 and errors to 2.
+// It returns -1 when the command should continue.
+func parseFlags(fs *flag.FlagSet, args []string, stderr io.Writer) int {
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -138,11 +84,35 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "canute-qr: unexpected argument %q\n", fs.Arg(0))
 		return 2
 	}
+	return -1
+}
 
-	fail := func(err error) int {
+func failer(stderr io.Writer) func(error) int {
+	return func(err error) int {
 		fmt.Fprintln(stderr, "canute-qr:", err)
 		return 1
 	}
+}
+
+func runGenerate(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("generate", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	var (
+		typeName  = fs.String("type", "url", `content type (see "canute-qr types")`)
+		data      = fs.String("data", "", "value for the type's main field, e.g. the URL, text or phone number")
+		out       = fs.String("o", "", `output file, or "-" for stdout (required)`)
+		formatStr = fs.String("format", "", "png, jpeg, svg, pdf or eps (default: from the -o extension)")
+	)
+	style := addStyleFlags(fs)
+	fieldFlags := map[string]*string{}
+	for name, usage := range fieldUsages() {
+		fieldFlags[name] = fs.String(name, "", usage)
+	}
+	fs.Usage = func() { generateUsage(fs) }
+	if code := parseFlags(fs, args, stderr); code >= 0 {
+		return code
+	}
+	fail := failer(stderr)
 
 	typ, ok := encode.Lookup(*typeName)
 	if !ok {
@@ -182,44 +152,28 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		return fail(err)
 	}
 
-	req := generate.Request{Type: typ.Name, Fields: values, Design: d}
-	if *logoArg != "" {
-		if strings.HasPrefix(*logoArg, "icon:") {
-			req.Design.Logo = *logoArg
-		} else {
-			b, err := os.ReadFile(*logoArg)
-			if err != nil {
-				return fail(err)
-			}
-			img, err := logo.Decode(b)
-			if err != nil {
-				return fail(fmt.Errorf("--logo: %w", err))
-			}
-			req.Design.Logo = "asset:file"
-			req.Assets = func(string) (image.Image, error) { return img, nil }
-		}
-	}
-
-	code, err := generate.Prepare(req)
+	design, assets, err := style.resolve()
 	if err != nil {
 		return fail(err)
 	}
-	opts := render.Options{Format: format, Size: *size, Quality: *quality, Page: *page, PrintMM: *printMM}
+	code, err := generate.Prepare(generate.Request{Type: typ.Name, Fields: values, Design: design, Assets: assets})
+	if err != nil {
+		return fail(err)
+	}
 	var buf bytes.Buffer
-	if err := code.Export(&buf, opts); err != nil {
+	if err := code.Export(&buf, style.export(format)); err != nil {
 		return fail(err)
 	}
 
-	if !*noVerify {
-		checkPx := *size
-		if format == render.PDF || format == render.EPS {
-			checkPx = render.MaxSize // print output: resolution is not the bottleneck
-		}
-		report := code.Verify(checkPx)
+	if !*style.noVerify {
+		report := code.Verify(style.checkPx(format))
 		for _, w := range report.Warnings {
 			fmt.Fprintln(stderr, "warning:", w)
 		}
-		if *strict && !report.OK() {
+		for _, n := range report.Notes {
+			fmt.Fprintln(stderr, "note:", n)
+		}
+		if *style.strict && !report.OK() {
 			return fail(errors.New("scannability check failed (--strict); nothing written"))
 		}
 	}
@@ -258,16 +212,10 @@ func generateUsage(fs *flag.FlagSet) {
 	fmt.Fprint(w, "Usage: canute-qr generate --type TYPE [content fields] -o FILE [flags]\n\nExamples:\n")
 	fmt.Fprint(w, "  canute-qr generate --data https://example.com -o link.png\n")
 	fmt.Fprint(w, "  canute-qr generate --type wifi --ssid Home --password secret -o wifi.svg\n")
-	fmt.Fprint(w, "  canute-qr generate --type vcard --first Canute --last Knutsson --mobile +4512345678 -o me.png\n\n")
+	fmt.Fprint(w, "  canute-qr generate --type barcode --symbology ean13 --data 590123412345 -o product.pdf\n\n")
 	fmt.Fprint(w, "Flags:\n")
-	for _, name := range generalFlags {
-		f := fs.Lookup(name)
-		fmt.Fprintf(w, "  --%s\n    \t%s", f.Name, f.Usage)
-		if f.DefValue != "" && f.DefValue != "0" && f.DefValue != "false" {
-			fmt.Fprintf(w, " (default %s)", f.DefValue)
-		}
-		fmt.Fprintln(w)
-	}
+	printFlags(fs, []string{"type", "data", "o", "format"})
+	printFlags(fs, styleFlagNames)
 	fmt.Fprint(w, "\nContent fields are flags too, e.g. --ssid, --password. Run \"canute-qr types\" for the full list.\n")
 }
 

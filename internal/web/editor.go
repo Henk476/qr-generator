@@ -7,10 +7,8 @@ import (
 	"html/template"
 	"io"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/Henk476/qr-generator/internal/encode"
 	"github.com/Henk476/qr-generator/internal/generate"
@@ -391,7 +389,7 @@ func (s *Server) handleEditorPost(w http.ResponseWriter, r *http.Request) {
 			Tags:   strings.Split(d.Tags, ","),
 		}
 		if c.Name == "" {
-			c.Name = defaultName(d.Type, c.Fields)
+			c.Name = generate.DefaultName(d.Type, c.Fields)
 		}
 		if id == "" || action == "save-new" {
 			err = s.store.CreateCode(ctx, c)
@@ -449,9 +447,9 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request, d *editorData)
 	}
 	name := d.Name
 	if name == "" {
-		name = defaultName(d.Type, req.Fields)
+		name = generate.DefaultName(d.Type, req.Fields)
 	}
-	writeImage(w, buf.Bytes(), opts.Format, slug(name)+"."+opts.Format.Ext())
+	writeImage(w, buf.Bytes(), opts.Format, generate.Slug(name)+"."+opts.Format.Ext())
 	return nil
 }
 
@@ -462,39 +460,6 @@ func writeImage(w http.ResponseWriter, b []byte, f render.Format, attachmentName
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, attachmentName))
 	}
 	w.Write(b)
-}
-
-// defaultName names an unnamed code after its type and main value.
-func defaultName(t encode.Type, fields map[string]string) string {
-	v := fields[t.Primary]
-	if t.Name == "vcard" {
-		v = strings.TrimSpace(fields["first"] + " " + fields["last"])
-		if v == "" {
-			v = fields["org"]
-		}
-	}
-	v = strings.Join(strings.Fields(v), " ")
-	if utf8.RuneCountInString(v) > 40 {
-		v = string([]rune(v)[:39]) + "…"
-	}
-	if v == "" {
-		return t.Title
-	}
-	return t.Title + ": " + v
-}
-
-var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
-
-// slug makes a safe ASCII file name stem.
-func slug(s string) string {
-	out := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(s), "-"), "-")
-	if len(out) > 60 {
-		out = strings.TrimRight(out[:60], "-")
-	}
-	if out == "" {
-		return "qr-code"
-	}
-	return out
 }
 
 // Radio values for shape pickers; the design stores "" for square.
