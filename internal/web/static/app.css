@@ -249,3 +249,14 @@ details.group[open] summary { margin-bottom: 12px; }
 .swatch input:checked + .swatch-img { border: 2px solid var(--accent); background: var(--accent-soft); color: var(--accent); padding: 9px; }
 .swatch input:focus-visible + .swatch-img { outline: 2px solid var(--focus); outline-offset: 2px; }
 input[type="file"] { font: inherit; font-size: 13px; color: var(--muted); max-width: 100%; }
+
+/* Bulk and settings panels */
+.panel + .panel { margin-top: 16px; }
+.panel h2 { font-size: 18px; margin: 0 0 8px; }
+.panel-wide { max-width: 760px; }
+.help { margin: 4px 0 12px; font-size: 14px; }
+.help summary { cursor: pointer; color: var(--accent); }
+.help pre, code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 13px; }
+.help pre { background: var(--surface-2); padding: 10px 12px; border-radius: 8px; overflow-x: auto; }
+code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+.field-list { padding-left: 18px; margin: 4px 0; color: var(--muted); }

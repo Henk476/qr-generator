@@ -37,4 +37,21 @@
   </fieldset>
   <div class="actions"><button class="btn btn-primary" type="submit">Save settings</button></div>
 </form>
+
+<section class="panel">
+  <h2>Backup</h2>
+  <p>Download your library, presets, uploaded logos and settings as one file.</p>
+  <a class="btn" href="/backup">Download backup</a>
+</section>
+
+<form class="panel" method="post" action="/restore" enctype="multipart/form-data" data-confirm="Replace your library, presets, logos and settings with this backup? This cannot be undone.">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <h2>Restore</h2>
+  <p>Replaces everything in your library, your own presets, logos and settings with the contents of a backup.</p>
+  <div class="field">
+    <label for="backup_file">Backup file</label>
+    <input id="backup_file" name="backup_file" type="file" accept=".zip,application/zip" required>
+  </div>
+  <div class="actions"><button class="btn btn-danger" type="submit">Restore</button></div>
+</form>
 {{template "foot" .}}{{end}}

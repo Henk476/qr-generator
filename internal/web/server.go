@@ -90,6 +90,10 @@ func New(ctx context.Context, st *store.Store, opts Options) (*Server, error) {
 	mux.HandleFunc("POST /presets/{id}/delete", s.handlePresetDelete)
 	mux.HandleFunc("GET /settings", s.handleSettings)
 	mux.HandleFunc("POST /settings", s.handleSettingsPost)
+	mux.HandleFunc("GET /bulk", s.handleBulk)
+	mux.HandleFunc("POST /bulk", s.handleBulkPost)
+	mux.HandleFunc("GET /backup", s.handleBackup)
+	mux.HandleFunc("POST /restore", s.handleRestore)
 
 	s.handler = s.secure(mux)
 	return s, nil
@@ -120,7 +124,11 @@ func (s *Server) secure(next http.Handler) http.Handler {
 				http.Error(w, "cross-site request refused", http.StatusForbidden)
 				return
 			}
-			r.Body = http.MaxBytesReader(w, r.Body, logo.MaxBytes+1<<20) // room for a logo upload
+			limit := int64(logo.MaxBytes + 1<<20) // room for a logo or CSV upload
+			if r.URL.Path == "/restore" {
+				limit = maxRestoreBytes + 1<<20
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
 			if subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(s.csrf)) != 1 {
 				http.Error(w, "invalid or missing form token: reload the page and try again", http.StatusForbidden)
 				return
@@ -196,7 +204,7 @@ func parsePages() (map[string]*template.Template, error) {
 		return nil, err
 	}
 	pages := map[string]*template.Template{}
-	for _, name := range []string{"editor", "library", "presets", "settings"} {
+	for _, name := range []string{"editor", "library", "bulk", "presets", "settings"} {
 		t, err := template.Must(base.Clone()).ParseFS(templateFS, "templates/"+name+".html")
 		if err != nil {
 			return nil, err

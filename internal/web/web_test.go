@@ -1,6 +1,7 @@
 package web
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"image"
@@ -464,4 +465,62 @@ func TestBarcodeEditor(t *testing.T) {
 	wantBody(t, rec, "<svg", "UPC-A, 95 modules wide", "Scan check passed")
 	rec = a.post("/preview", editorForm("preview", "type", "barcode", "f.symbology", "pdf417", "f.value", "HELLO"))
 	wantBody(t, rec, "not decode-checked")
+}
+
+func TestBulk(t *testing.T) {
+	a := newTestApp(t)
+	wantBody(t, a.get("/bulk"), "Create ZIP", "<strong>wifi</strong>: ssid, password")
+
+	csvData := []byte("type,name,url,ssid,password\nurl,Shop,example.com,,\nwifi,Guest,,Guest,secret\nurl,Bad,javascript://x,,\n")
+	form := url.Values{"type": {"url"}, "preset": {"tide"}, "format": {"svg"}, "size": {"256"}, "print_mm": {"50"}, "save": {"1"}, "tags": {"bulk, test"}}
+	rec := a.multipartPost("/bulk", form, "csv_file", "codes.csv", csvData)
+	wantStatus(t, rec, http.StatusOK)
+	if ct := rec.Header().Get("Content-Type"); ct != "application/zip" {
+		t.Fatalf("Content-Type %q", ct)
+	}
+	if s := rec.Header().Get("X-Canute-Summary"); s != "ok=2 warnings=0 failed=1" {
+		t.Errorf("summary %q", s)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(rec.Body.Bytes()), int64(rec.Body.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(zr.File) != 3 || zr.File[0].Name != "shop.svg" {
+		t.Errorf("zip files: %v", zr.File)
+	}
+	codes, _ := a.store.ListCodes(context.Background(), store.ListOptions{Tag: "bulk"})
+	if len(codes) != 2 || codes[0].Design.Gradient != "linear" {
+		t.Errorf("saved %d codes: %+v", len(codes), codes)
+	}
+
+	rec = a.multipartPost("/bulk", url.Values{"type": {"url"}, "preset": {"classic"}, "format": {"png"}, "size": {"256"}},
+		"csv_file", "x.csv", []byte("colour\nred\n"))
+	wantStatus(t, rec, http.StatusUnprocessableEntity)
+	wantBody(t, rec, "unknown CSV columns: colour")
+}
+
+func TestBackupAndRestore(t *testing.T) {
+	a := newTestApp(t)
+	wantStatus(t, a.post("/new", editorForm("save", "name", "Keep me")), http.StatusSeeOther)
+	rec := a.get("/backup")
+	wantStatus(t, rec, http.StatusOK)
+	if cd := rec.Header().Get("Content-Disposition"); !strings.Contains(cd, "canute-qr-backup-") {
+		t.Errorf("Content-Disposition %q", cd)
+	}
+	archive := rec.Body.Bytes()
+
+	b := newTestApp(t)
+	wantStatus(t, b.post("/new", editorForm("save", "name", "Replaced")), http.StatusSeeOther)
+	rec = b.multipartPost("/restore", url.Values{}, "backup_file", "backup.zip", archive)
+	wantStatus(t, rec, http.StatusSeeOther)
+	rec = b.get(rec.Header().Get("Location"))
+	wantBody(t, rec, "Backup restored: 1 codes")
+	wantBody(t, b.get("/library"), "Keep me")
+	if strings.Contains(b.get("/library").Body.String(), "Replaced") {
+		t.Error("old code survived the restore")
+	}
+
+	rec = b.multipartPost("/restore", url.Values{}, "backup_file", "x.zip", []byte("not a zip"))
+	wantStatus(t, rec, http.StatusUnprocessableEntity)
+	wantBody(t, rec, "Restore failed: not a backup file")
 }

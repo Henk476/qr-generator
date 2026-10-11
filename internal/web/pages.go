@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -222,8 +223,14 @@ func (s *Server) settingsPage(r *http.Request) settingsData {
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	d := s.settingsPage(r)
-	if r.URL.Query().Has("saved") {
+	q := r.URL.Query()
+	switch {
+	case q.Has("saved"):
 		d.Flash = "Settings saved."
+	case q.Has("restored"):
+		var codes, presets, logos int
+		fmt.Sscanf(q.Get("restored"), "%d,%d,%d", &codes, &presets, &logos)
+		d.Flash = fmt.Sprintf("Backup restored: %d codes, %d presets and %d logos.", codes, presets, logos)
 	}
 	s.render(w, http.StatusOK, "settings", d)
 }
