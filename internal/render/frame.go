@@ -25,7 +25,7 @@ func layoutFrame(f *Frame, s float64) frameLayout {
 	capFrac := 0.55 // text cap height as a fraction of its band
 	fill := SolidPaint(f.Color)
 	text := func(box Rect, c color.NRGBA) Item {
-		return Item{Path: textInBox(f.Text, f.Font, box, capFrac), Paint: SolidPaint(c)}
+		return Item{Path: textInBox(f.Text, f.face(), box, capFrac), Paint: SolidPaint(c)}
 	}
 	ring := func(x, y, w, h, radius float64) Path {
 		return Ring(RoundRectAll(x, y, w, h, radius), RoundRectAll(x+t, y+t, w-2*t, h-2*t, max(radius-t, 0)))

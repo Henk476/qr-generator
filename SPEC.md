@@ -108,9 +108,10 @@ All codes are static: the content is encoded directly in the symbol and works wi
 | 7 | **WhatsApp** | `https://wa.me/{num}?text=` | |
 | 8 | **Wi-Fi** | `WIFI:T:{WPA/WEP/nopass};S:;P:;H:true;;` | Escapes `\ ; , : "` |
 | 9 | **Event** | iCalendar `BEGIN:VEVENT…END:VEVENT` | Title, start and end, time zone, location, and description |
-| 10 | **Barcode** | Data Matrix, PDF417, Aztec, Code 128, EAN-13, or UPC-A | Product and logistics data. EAN-13 and UPC-A add or verify the GS1 check digit; text symbologies take ASCII. Colors, gradient, and quiet zone apply (linear codes get at least a 10-module side quiet zone and human-readable text). Every symbology is decode-checked except PDF417, which has no offline reader, so the UI reports it as not checked. |
-
-**Stretch types:** Location (`geo:lat,lng`), Crypto payment (`bitcoin:` and `ethereum:` URIs), and PayPal.me link.
+| 10 | **Location** | `geo:lat,lng`, with `?q=lat,lng(label)` when a place name is given | Decimal degrees with range checks; a comma decimal separator is accepted. |
+| 11 | **PayPal** | `https://paypal.me/{name}/{amount}{CUR}` | PayPal.me name, optional amount (2 decimals) and 3-letter currency. |
+| 12 | **Crypto payment** | BIP 21 `bitcoin:` and `litecoin:` URIs; EIP-681 `ethereum:` with the amount in wei | Addresses are checksum-verified to catch typos: Base58Check and bech32/bech32m for Bitcoin and Litecoin, EIP-55 for mixed-case Ethereum addresses. Amounts allow 8 decimals (18 for Ether). |
+| 13 | **Barcode** | Data Matrix, PDF417, Aztec, Code 128, EAN-13, or UPC-A | Product and logistics data. EAN-13 and UPC-A add or verify the GS1 check digit; text symbologies take ASCII. Colors, gradient, and quiet zone apply (linear codes get at least a 10-module side quiet zone and human-readable text). Every symbology is decode-checked except PDF417, which has no offline reader, so the UI reports it as not checked. |
 
 ## 5. Design and customization
 
@@ -129,6 +130,7 @@ All options are live-previewed. Every change re-renders within **200 ms** for a 
 ### 5.3 Finder pattern ("eyes")
 - **Border (outer eye):** square, rounded, circle, leaf, or cut-corner, each with its own color.
 - **Center (inner eye):** square, rounded, circle, diamond, leaf, or star, each with its own color.
+- **Per-corner styling:** each of the three corners (top-left, top-right, bottom-left) can override the border shape, center shape, and both colors. Unset values inherit the settings above.
 
 ### 5.4 Logo
 - Upload PNG, JPEG, or SVG, or pick from a **built-in icon library** of 15 vector icons drawn for this project: link, location, e-mail, phone, chat (for WhatsApp and SMS), Wi-Fi, contact card, calendar, payment card, Bitcoin, "scan me", menu, fork and knife, home, and star. Brand logos such as WhatsApp or PayPal are not included, because they are trademarks.
@@ -139,7 +141,7 @@ All options are live-previewed. Every change re-renders within **200 ms** for a 
 
 ### 5.5 Frames
 - About 10 frame templates: plain border, bottom banner, top banner, speech bubble, rounded badge, and phone outline, among others.
-- The frame phrase defaults to "SCAN ME" and holds up to 30 characters. Font can be Sans-Serif (Go Bold), Serif (Libre Baskerville Bold, bundled under the SIL OFL in `internal/render/fonts/`), or Monospace (Go Mono Bold). Fonts are embedded, and text is converted to outlines, so no output depends on installed fonts.
+- The frame phrase defaults to "SCAN ME" and holds up to 30 characters. Font can be Sans-Serif (Go Bold), Serif (Libre Baskerville Bold, bundled under the SIL OFL in `internal/render/fonts/`), or Monospace (Go Mono Bold). You can also upload your own TTF or OTF font (up to 10 MB; it must contain Latin letters). Fonts are embedded, and text is converted to outlines, so no output depends on installed fonts. Making sure an uploaded font's license allows embedding is up to the user.
 - Frame color and text color are set separately.
 
 ### 5.6 Presets
@@ -212,6 +214,7 @@ canute-qr types    |   canute-qr styles   |   canute-qr version
 | GET | `/codes/{id}/image?format=&size=` | Render a saved code |
 | GET/POST/DELETE | `/presets[/{id}]` | Style presets (built-ins cannot be deleted) |
 | POST | `/assets` | Upload a logo; returns `asset:<id>` for use in a design |
+| POST | `/fonts` | Upload a TTF/OTF font; returns `asset:<id>` for `design.frameFont` |
 | POST | `/batch` | CSV to ZIP |
 
 Partial `design` objects merge onto the defaults, or onto the current design for PATCH. Errors are `{"error": "..."}`. An OpenAPI 3.0 document is served at `/api/v1/openapi.json` without a token.
@@ -221,7 +224,7 @@ Partial `design` objects merge onto the defaults, or onto the current design for
 ```sql
 codes    (id TEXT PK, name, type, content JSON, style JSON, tags JSON,
           created_at, updated_at)
-assets   (id TEXT PK, kind /*logo*/, mime, sha256 UNIQUE, data BLOB, created_at)  -- deduplicated by hash
+assets   (id TEXT PK, kind /*logo|font*/, mime, sha256 UNIQUE, data BLOB, created_at)  -- deduplicated by hash
 presets  (id TEXT PK, name, style JSON, builtin BOOL)
 settings (key TEXT PK, value TEXT)
 ```
@@ -250,11 +253,11 @@ The web UI is available in English, German, Spanish, French, Italian, and Portug
 
 | Milestone | Scope | Status |
 |---|---|---|
-| **M1: Core engine** | All QR content types in §4 (types 1–9); basic style (colors, ECC, quiet zone); PNG and SVG export; CLI `generate`; verify step | Done |
+| **M1: Core engine** | QR content types 1–9 in §4; basic style (colors, ECC, quiet zone); PNG and SVG export; CLI `generate`; verify step | Done |
 | **M2: Web UI** | Server-rendered 3-step UI, live preview, SQLite library, presets | Done |
 | **M3: Full design** | Module and eye shapes, gradients, logos with background knockout, icon library, frames; PDF, EPS, and JPEG export | Done |
 | **M4: Bulk, API, polish** | CSV batch, REST API and OpenAPI, 2D barcodes, backup and restore, i18n, release packaging | Done |
-| **Stretch** | Location, crypto, and PayPal types; per-eye styling; custom fonts | Open |
+| **Stretch** | Location, crypto, and PayPal types; per-corner styling; custom fonts; ZXing-checked mask selection | Done |
 
 ## 15. Decisions
 
@@ -269,6 +272,7 @@ The web UI is available in English, German, Spanish, French, Italian, and Portug
 | D7 | PDF and EPS are written by hand from the shared vector scene, with no PDF library. They use real gradients (PDF shadings and PostScript `shfill`) and vector text outlines. |
 | D8 | Bulk CSV column mapping uses `header=field` pairs (`--map`, a form field, or an API field) instead of a separate `mapping.toml` file, so no TOML dependency is needed. |
 | D9 | The REST API uses a bearer token from Settings rather than the web UI's form token, so scripts can call it while web pages on other sites cannot. |
+| D10 | After encoding, the data mask is re-chosen. Masks are tried from the lowest ISO/IEC 18004 penalty up, and the first one a ZXing-equivalent reader decodes from a plain render wins. The encoder library's own choice failed ZXing detection for about 1% of codes at level H, because finder-like patterns in the data caused false finder detection. A test re-masks every version (1–40) with every mask and requires an exact decode. |
 
 ## 16. Open questions
 

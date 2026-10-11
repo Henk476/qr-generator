@@ -57,7 +57,7 @@ Flags:
 	if err != nil {
 		return fail(err)
 	}
-	design, assets, err := style.resolve()
+	res, err := style.resolve()
 	if err != nil {
 		return fail(err)
 	}
@@ -78,7 +78,7 @@ Flags:
 
 	var buf bytes.Buffer
 	results, err := batch.Generate(&buf, rows, batch.Options{
-		Design: design, Assets: assets, Export: style.export(format), Verify: !*style.noVerify,
+		Design: res.design, Assets: res.assets, Fonts: res.fonts, Export: style.export(format), Verify: !*style.noVerify,
 	})
 	if err != nil {
 		return fail(err)

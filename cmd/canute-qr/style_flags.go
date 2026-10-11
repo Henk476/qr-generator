@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/Henk476/qr-generator/internal/generate"
@@ -59,12 +60,19 @@ func addStyleFlags(fs *flag.FlagSet) *styleFlags {
 	fs.StringVar(&d.EyeInner, "eye-center", "", "finder center shape: "+optionValues(render.EyeInnerShapes))
 	fs.StringVar(&d.EyeOuterColor, "eye-border-color", "", "finder border color (default: foreground)")
 	fs.StringVar(&d.EyeInnerColor, "eye-center-color", "", "finder center color (default: foreground)")
+	for i, name := range render.EyeNames {
+		n := i + 1
+		fs.StringVar(&d.Eyes[i].Outer, fmt.Sprintf("eye-%d-border", n), "", fmt.Sprintf("override the %s finder border shape", name))
+		fs.StringVar(&d.Eyes[i].Inner, fmt.Sprintf("eye-%d-center", n), "", fmt.Sprintf("override the %s finder center shape", name))
+		fs.StringVar(&d.Eyes[i].OuterColor, fmt.Sprintf("eye-%d-border-color", n), "", fmt.Sprintf("override the %s finder border color", name))
+		fs.StringVar(&d.Eyes[i].InnerColor, fmt.Sprintf("eye-%d-center-color", n), "", fmt.Sprintf("override the %s finder center color", name))
+	}
 	fs.IntVar(&d.LogoSize, "logo-size", generate.DefaultLogoSize, "logo width as a percentage of the code (10-30)")
 	fs.BoolVar(&d.LogoCircle, "logo-circle", false, "clip the logo to a circle")
 	fs.BoolVar(&d.LogoKeepModules, "logo-keep-modules", false, "draw modules behind the logo instead of clearing them")
 	fs.StringVar(&d.Frame, "frame", "", "frame: "+optionValues(render.Frames))
 	fs.StringVar(&d.FrameText, "frame-text", "", fmt.Sprintf("frame phrase, up to %d characters (default %q)", render.MaxFrameText, generate.DefaultFrameText))
-	fs.StringVar(&d.FrameFont, "frame-font", "", "frame font: "+optionValues(render.Fonts))
+	fs.StringVar(&d.FrameFont, "frame-font", "", "frame font: "+optionValues(render.Fonts)+", or a TTF/OTF file")
 	fs.StringVar(&d.FrameColor, "frame-color", "", "frame color (default: foreground)")
 	fs.StringVar(&d.FrameTextColor, "frame-text-color", "", "color of text on a filled frame band (default: white)")
 	return f
@@ -75,31 +83,54 @@ var styleFlagNames = []string{
 	"size", "quality", "page", "print-size",
 	"ecc", "qr-version", "quiet-zone", "fg", "bg", "gradient", "fg2", "gradient-angle",
 	"shape", "eye-border", "eye-center", "eye-border-color", "eye-center-color",
+	"eye-1-border", "eye-1-center", "eye-1-border-color", "eye-1-center-color",
+	"eye-2-border", "eye-2-center", "eye-2-border-color", "eye-2-center-color",
+	"eye-3-border", "eye-3-center", "eye-3-border-color", "eye-3-center-color",
 	"logo", "logo-size", "logo-circle", "logo-keep-modules",
 	"frame", "frame-text", "frame-font", "frame-color", "frame-text-color",
 	"no-verify", "strict",
 }
 
-// resolve returns the design and, for a logo file, a loader for it.
-func (f *styleFlags) resolve() (generate.Design, generate.AssetLoader, error) {
-	d := f.design
-	if *f.logo == "" {
-		return d, nil, nil
+// loaded is the design plus loaders for any logo or font files it names.
+type loaded struct {
+	design generate.Design
+	assets generate.AssetLoader
+	fonts  generate.FontLoader
+}
+
+// resolve loads logo and font files named by flags.
+func (f *styleFlags) resolve() (loaded, error) {
+	l := loaded{design: f.design}
+	d := &l.design
+	if *f.logo != "" {
+		if strings.HasPrefix(*f.logo, "icon:") {
+			d.Logo = *f.logo
+		} else {
+			b, err := os.ReadFile(*f.logo)
+			if err != nil {
+				return l, err
+			}
+			img, err := logo.Decode(b)
+			if err != nil {
+				return l, fmt.Errorf("--logo: %w", err)
+			}
+			d.Logo = "asset:file"
+			l.assets = func(string) (image.Image, error) { return img, nil }
+		}
 	}
-	if strings.HasPrefix(*f.logo, "icon:") {
-		d.Logo = *f.logo
-		return d, nil, nil
+	if ff := d.FrameFont; ff != "" && !slices.Contains([]string{"sans", "serif", "mono"}, ff) && !strings.HasPrefix(ff, "asset:") {
+		b, err := os.ReadFile(ff)
+		if err != nil {
+			return l, fmt.Errorf("--frame-font: %w", err)
+		}
+		font, err := render.ParseFont(b)
+		if err != nil {
+			return l, fmt.Errorf("--frame-font: %w", err)
+		}
+		d.FrameFont = "asset:file"
+		l.fonts = func(string) (*render.Font, error) { return font, nil }
 	}
-	b, err := os.ReadFile(*f.logo)
-	if err != nil {
-		return d, nil, err
-	}
-	img, err := logo.Decode(b)
-	if err != nil {
-		return d, nil, fmt.Errorf("--logo: %w", err)
-	}
-	d.Logo = "asset:file"
-	return d, func(string) (image.Image, error) { return img, nil }, nil
+	return l, nil
 }
 
 // export returns the export options for format.

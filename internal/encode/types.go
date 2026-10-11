@@ -114,6 +114,40 @@ func init() {
 		},
 		build: buildEvent,
 	})
+	register(Type{
+		Name: "location", Title: "Location",
+		Fields: []Field{
+			{Name: "latitude", Label: "Latitude", Placeholder: "52.3676", Required: true,
+				Usage: "decimal degrees, -90 to 90 (north is positive)"},
+			{Name: "longitude", Label: "Longitude", Placeholder: "4.9041", Required: true,
+				Usage: "decimal degrees, -180 to 180 (east is positive)"},
+			{Name: "label", Label: "Place name", Usage: "shown on the map pin by apps that support it"},
+		},
+		build: buildLocation,
+	})
+	register(Type{
+		Name: "paypal", Title: "PayPal", Primary: "username",
+		Fields: []Field{
+			{Name: "username", Label: "PayPal.me name", Placeholder: "canute", Required: true,
+				Usage: "the name in your paypal.me link"},
+			{Name: "amount", Label: "Amount", Placeholder: "12.50", Usage: "optional amount to request"},
+			{Name: "currency", Label: "Currency", Placeholder: "EUR", Usage: "optional 3-letter currency code, e.g. EUR or USD"},
+		},
+		build: buildPayPal,
+	})
+	register(Type{
+		Name: "crypto", Title: "Crypto payment", Primary: "address",
+		Fields: []Field{
+			{Name: "currency", Label: "Currency", Kind: KindSelect, Options: CryptoCurrencies, Required: true,
+				Usage: "bitcoin, ethereum or litecoin"},
+			{Name: "address", Label: "Wallet address", Required: true,
+				Usage: "the receiving address; its checksum is verified to catch typos"},
+			{Name: "amount", Label: "Amount", Usage: "optional amount in the coin, e.g. 0.001"},
+			{Name: "label", Label: "Label", Usage: "optional recipient name (Bitcoin and Litecoin)"},
+			{Name: "message", Label: "Message", Kind: KindTextarea, Usage: "optional payment note (Bitcoin and Litecoin)"},
+		},
+		build: buildCrypto,
+	})
 	syms := barcode.Symbologies()
 	symNames := make([]string, len(syms))
 	for i, s := range syms {

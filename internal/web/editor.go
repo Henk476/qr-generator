@@ -24,19 +24,20 @@ const previewPx = 512
 // editorData backs templates/editor.html.
 type editorData struct {
 	page
-	Opts    *designOptions
-	Action  string // form action URL
-	CodeID  string // empty for a new, unsaved code
-	Types   []encode.Type
-	Type    encode.Type
-	Values  map[string]string
-	Name    string
-	Tags    string
-	Design  generate.Design
-	Presets []store.Preset
-	Preset  string
-	Export  exportForm
-	Preview preview
+	Opts     *designOptions
+	Action   string // form action URL
+	CodeID   string // empty for a new, unsaved code
+	Types    []encode.Type
+	Type     encode.Type
+	Values   map[string]string
+	Name     string
+	Tags     string
+	Design   generate.Design
+	Presets  []store.Preset
+	Preset   string
+	Export   exportForm
+	Preview  preview
+	FontName string // name of an uploaded frame font, for display
 }
 
 // exportForm is the Download step's settings.
@@ -172,7 +173,7 @@ func (s *Server) handleNew(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	d.Preview = s.makePreview(r, d)
-	s.render(w, http.StatusOK, "editor", d)
+	s.renderEditor(w, r, http.StatusOK, d)
 }
 
 func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
@@ -197,7 +198,7 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 		d.Flash = s.tr(r, "Saved to your library.")
 	}
 	d.Preview = s.makePreview(r, d)
-	s.render(w, http.StatusOK, "editor", d)
+	s.renderEditor(w, r, http.StatusOK, d)
 }
 
 // readForm fills d from the posted editor form.
@@ -230,6 +231,20 @@ func readForm(r *http.Request, d *editorData) {
 	}
 	if on("eye_inner_custom") {
 		g.EyeInnerColor = v("eye_inner_color")
+	}
+	g.Eyes = [3]generate.EyeOverride{}
+	if on("eyes_custom") {
+		for i := range g.Eyes {
+			p := fmt.Sprintf("eye%d_", i+1)
+			e := &g.Eyes[i]
+			e.Outer, e.Inner = v(p+"outer"), v(p+"inner")
+			if on(p + "outer_custom") {
+				e.OuterColor = v(p + "outer_color")
+			}
+			if on(p + "inner_custom") {
+				e.InnerColor = v(p + "inner_color")
+			}
+		}
 	}
 	g.Logo, g.LogoSize = v("logo"), num("logo_size")
 	g.LogoCircle, g.LogoKeepModules = on("logo_circle"), on("logo_keep")
@@ -265,7 +280,7 @@ func (s *Server) request(r *http.Request, d *editorData) generate.Request {
 			fields[f.Name] = v
 		}
 	}
-	return generate.Request{Type: d.Type.Name, Fields: fields, Design: d.Design, Assets: s.assetLoader(r.Context())}
+	return generate.Request{Type: d.Type.Name, Fields: fields, Design: d.Design, Assets: s.assetLoader(r.Context()), Fonts: s.fontLoader(r.Context())}
 }
 
 func (s *Server) makePreview(r *http.Request, d *editorData) preview {
@@ -346,6 +361,14 @@ func (s *Server) handleEditorPost(w http.ResponseWriter, r *http.Request) {
 			d.Design = p.Design
 		}
 
+	case action == "upload-font":
+		id, err := s.uploadFont(r)
+		if err != nil {
+			invalid(err.Error())
+			break
+		}
+		d.Design.FrameFont, d.Flash = "asset:"+id, s.tr(r, "Font uploaded.")
+
 	case action == "upload-logo":
 		id, err := s.uploadLogo(r)
 		if err != nil {
@@ -412,7 +435,24 @@ func (s *Server) handleEditorPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	d.Preview = s.makePreview(r, d)
-	s.render(w, status, "editor", d)
+	s.renderEditor(w, r, status, d)
+}
+
+// uploadFont stores the posted TTF or OTF file as a font asset.
+func (s *Server) uploadFont(r *http.Request) (string, error) {
+	f, _, err := r.FormFile("font_file")
+	if err != nil {
+		return "", errors.New(s.tr(r, "Choose a TTF or OTF font file to upload."))
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, render.MaxFontBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if _, err := render.ParseFont(data); err != nil {
+		return "", err
+	}
+	return s.store.SaveAsset(r.Context(), "font", "font/sfnt", data)
 }
 
 // uploadLogo stores the posted logo file as a normalized PNG asset.
@@ -479,4 +519,39 @@ func orSquare(v string) string {
 		return "square"
 	}
 	return v
+}
+
+// renderEditor fills in display-only details, then renders the editor.
+func (s *Server) renderEditor(w http.ResponseWriter, r *http.Request, status int, d *editorData) {
+	if id, ok := strings.CutPrefix(d.Design.FrameFont, "asset:"); ok {
+		if f, err := s.fontLoader(r.Context())(id); err == nil {
+			d.FontName = f.Name()
+		}
+	}
+	s.render(w, status, "editor", d)
+}
+
+// UploadedFont reports whether the frame font is an uploaded file.
+func (d editorData) UploadedFont() bool { return strings.HasPrefix(d.Design.FrameFont, "asset:") }
+
+// EyesCustom reports whether any corner has its own style.
+func (d editorData) EyesCustom() bool { return d.Design.Eyes != [3]generate.EyeOverride{} }
+
+// eyeSlot backs one corner's controls in the per-corner section.
+type eyeSlot struct {
+	N     int    // 1-3, used in form field names
+	Label string // English, translated in the template
+	generate.EyeOverride
+	OuterHex, InnerHex string
+}
+
+// EyeSlots lists the three corners with their current overrides.
+func (d editorData) EyeSlots() []eyeSlot {
+	labels := [3]string{"Top left", "Top right", "Bottom left"}
+	out := make([]eyeSlot, 3)
+	for i, e := range d.Design.Eyes {
+		out[i] = eyeSlot{N: i + 1, Label: labels[i], EyeOverride: e,
+			OuterHex: colorInput(e.OuterColor, d.EyeOuterHex()), InnerHex: colorInput(e.InnerColor, d.EyeInnerHex())}
+	}
+	return out
 }

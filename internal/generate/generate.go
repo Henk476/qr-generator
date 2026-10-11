@@ -3,6 +3,7 @@
 package generate
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"io"
@@ -34,6 +35,8 @@ type Design struct {
 	EyeInner      string `json:"eyeInner,omitempty"`      // render.EyeInnerShapes
 	EyeOuterColor string `json:"eyeOuterColor,omitempty"` // "" = same as foreground
 	EyeInnerColor string `json:"eyeInnerColor,omitempty"`
+	// Eyes overrides the top-left, top-right and bottom-left finder patterns.
+	Eyes [3]EyeOverride `json:"eyes,omitzero"`
 
 	Logo            string `json:"logo,omitempty"`     // "icon:<name>" or "asset:<id>"
 	LogoSize        int    `json:"logoSize,omitempty"` // percent of code width, 10-30 (0 = 22)
@@ -45,6 +48,15 @@ type Design struct {
 	FrameFont      string `json:"frameFont,omitempty"`      // render.Fonts
 	FrameColor     string `json:"frameColor,omitempty"`     // "" = foreground
 	FrameTextColor string `json:"frameTextColor,omitempty"` // "" = white
+}
+
+// EyeOverride restyles one finder pattern; empty fields inherit the
+// design's eye settings.
+type EyeOverride struct {
+	Outer      string `json:"outer,omitempty"`
+	Inner      string `json:"inner,omitempty"`
+	OuterColor string `json:"outerColor,omitempty"`
+	InnerColor string `json:"innerColor,omitempty"`
 }
 
 // Defaults for optional design fields.
@@ -61,17 +73,20 @@ func DefaultDesign() Design {
 // AssetLoader returns an uploaded logo image by asset ID.
 type AssetLoader func(id string) (image.Image, error)
 
+// FontLoader returns an uploaded font by asset ID.
+type FontLoader func(id string) (*render.Font, error)
+
 // Validate checks every design value without rendering anything. Uploaded
 // logos are only checked for a well-formed reference.
 func (d Design) Validate() error {
-	_, _, err := d.parse(nil)
+	_, _, err := d.parse(nil, nil)
 	return err
 }
 
 // HasLogo reports whether the design places a logo.
 func (d Design) HasLogo() bool { return d.Logo != "" }
 
-func (d Design) parse(assets AssetLoader) (matrix.Options, render.Style, error) {
+func (d Design) parse(assets AssetLoader, fonts FontLoader) (matrix.Options, render.Style, error) {
 	fail := func(err error) (matrix.Options, render.Style, error) { return matrix.Options{}, render.Style{}, err }
 	lvl, err := matrix.ParseLevel(d.ECC)
 	if err != nil {
@@ -85,6 +100,9 @@ func (d Design) parse(assets AssetLoader) (matrix.Options, render.Style, error) 
 		Module:    d.Module,
 		EyeOuter:  d.EyeOuter,
 		EyeInner:  d.EyeInner,
+	}
+	for i, e := range d.Eyes {
+		s.PerEye[i].Outer, s.PerEye[i].Inner = e.Outer, e.Inner
 	}
 	if s.Foreground, err = render.ParseColor(d.Foreground); err != nil {
 		return fail(fmt.Errorf("foreground: %w", err))
@@ -101,7 +119,11 @@ func (d Design) parse(assets AssetLoader) (matrix.Options, render.Style, error) 
 	for _, ec := range []struct {
 		what, v string
 		dst     **render.Color
-	}{{"eye border color", d.EyeOuterColor, &s.EyeOuterColor}, {"eye center color", d.EyeInnerColor, &s.EyeInnerColor}} {
+	}{{"eye border color", d.EyeOuterColor, &s.EyeOuterColor}, {"eye center color", d.EyeInnerColor, &s.EyeInnerColor},
+		{"top-left eye border color", d.Eyes[0].OuterColor, &s.PerEye[0].OuterColor}, {"top-left eye center color", d.Eyes[0].InnerColor, &s.PerEye[0].InnerColor},
+		{"top-right eye border color", d.Eyes[1].OuterColor, &s.PerEye[1].OuterColor}, {"top-right eye center color", d.Eyes[1].InnerColor, &s.PerEye[1].InnerColor},
+		{"bottom-left eye border color", d.Eyes[2].OuterColor, &s.PerEye[2].OuterColor}, {"bottom-left eye center color", d.Eyes[2].InnerColor, &s.PerEye[2].InnerColor},
+	} {
 		if ec.v == "" {
 			continue
 		}
@@ -145,6 +167,20 @@ func (d Design) parse(assets AssetLoader) (matrix.Options, render.Style, error) 
 		if f.Text == "" {
 			f.Text = DefaultFrameText
 		}
+		if ref, ok := strings.CutPrefix(d.FrameFont, "asset:"); ok {
+			switch {
+			case ref == "":
+				return fail(errors.New("frame font must be sans, serif, mono or asset:<id>"))
+			case fonts != nil:
+				font, err := fonts(ref)
+				if err != nil {
+					return fail(fmt.Errorf("frame font: %w", err))
+				}
+				f.Font, f.Custom = "custom", font
+			default:
+				f.Font = "sans" // validation only: the font is checked when loaded
+			}
+		}
 		if d.FrameColor != "" {
 			if f.Color, err = render.ParseColor(d.FrameColor); err != nil {
 				return fail(fmt.Errorf("frame color: %w", err))
@@ -170,6 +206,7 @@ type Request struct {
 	Fields map[string]string
 	Design Design
 	Assets AssetLoader // resolves "asset:" logos; may be nil if none are used
+	Fonts  FontLoader  // resolves "asset:" frame fonts; may be nil if none are used
 }
 
 // Code is a prepared code, ready to export in any format.
@@ -194,7 +231,7 @@ func (c *Code) Summary() string {
 
 // Prepare builds the payload and lays out the code.
 func Prepare(req Request) (*Code, error) {
-	opts, style, err := req.Design.parse(req.Assets)
+	opts, style, err := req.Design.parse(req.Assets, req.Fonts)
 	if err != nil {
 		return nil, err
 	}

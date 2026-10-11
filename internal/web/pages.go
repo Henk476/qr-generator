@@ -105,7 +105,7 @@ func (s *Server) handleCodeImage(w http.ResponseWriter, r *http.Request) {
 	if v := q.Get("print_mm"); v != "" {
 		opts.PrintMM, _ = strconv.ParseFloat(v, 64)
 	}
-	code, err := generate.Prepare(generate.Request{Type: c.Type, Fields: c.Fields, Design: c.Design, Assets: s.assetLoader(r.Context())})
+	code, err := generate.Prepare(generate.Request{Type: c.Type, Fields: c.Fields, Design: c.Design, Assets: s.assetLoader(r.Context()), Fonts: s.fontLoader(r.Context())})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
@@ -179,7 +179,7 @@ func (s *Server) handlePresetImage(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, err)
 		return
 	}
-	code, err := generate.Prepare(generate.Request{Type: "url", Fields: presetSample, Design: p.Design, Assets: s.assetLoader(r.Context())})
+	code, err := generate.Prepare(generate.Request{Type: "url", Fields: presetSample, Design: p.Design, Assets: s.assetLoader(r.Context()), Fonts: s.fontLoader(r.Context())})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return

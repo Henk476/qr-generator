@@ -11,11 +11,13 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Henk476/qr-generator/internal/generate"
+	"github.com/Henk476/qr-generator/internal/render"
 	"github.com/Henk476/qr-generator/internal/store"
 	"github.com/Henk476/qr-generator/internal/verify"
 )
@@ -35,6 +37,15 @@ func newClient(t *testing.T) *client {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
+	fonts := func(ctx context.Context) generate.FontLoader {
+		return func(id string) (*render.Font, error) {
+			a, err := st.GetAsset(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			return render.ParseFont(a.Data)
+		}
+	}
 	assets := func(ctx context.Context) generate.AssetLoader {
 		return func(id string) (image.Image, error) {
 			a, err := st.GetAsset(ctx, id)
@@ -44,7 +55,7 @@ func newClient(t *testing.T) *client {
 			return png.Decode(bytes.NewReader(a.Data))
 		}
 	}
-	return &client{t: t, st: st, api: New(st, Options{Token: func() string { return token }, Assets: assets})}
+	return &client{t: t, st: st, api: New(st, Options{Token: func() string { return token }, Assets: assets, Fonts: fonts})}
 }
 
 func (c *client) do(method, path, contentType string, body io.Reader) *httptest.ResponseRecorder {
@@ -109,7 +120,7 @@ func TestReferenceData(t *testing.T) {
 	rec := c.do(http.MethodGet, "/types", "", nil)
 	want(t, rec, http.StatusOK)
 	types := decode[[]typeJSON](t, rec)
-	if len(types) != 10 || types[0].Name != "url" || types[0].Fields[0].Name != "url" {
+	if len(types) != 13 || types[0].Name != "url" || types[0].Fields[0].Name != "url" {
 		t.Errorf("types = %+v", types[0])
 	}
 	rec = c.do(http.MethodGet, "/styles", "", nil)
@@ -243,4 +254,22 @@ func TestBatch(t *testing.T) {
 	if err != nil || len(zr.File) != 3 || zr.File[0].Name != "a.svg" {
 		t.Errorf("zip %v, %v", zr, err)
 	}
+}
+
+func TestUploadFont(t *testing.T) {
+	c := newClient(t)
+	data, err := os.ReadFile(filepath.Join("..", "render", "fonts", "LibreBaskerville-Bold.ttf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := c.do(http.MethodPost, "/fonts", "font/ttf", bytes.NewReader(data))
+	want(t, rec, http.StatusCreated)
+	got := decode[map[string]string](t, rec)
+	if !strings.HasPrefix(got["font"], "asset:") || !strings.Contains(got["name"], "Baskerville") {
+		t.Fatalf("upload = %v", got)
+	}
+	rec = c.json(http.MethodPost, "/render", map[string]any{"type": "url", "fields": map[string]string{"url": "a.com"},
+		"design": map[string]any{"frame": "label", "frameFont": got["font"], "frameText": "Hello"}, "export": map[string]any{"format": "svg", "size": 256}})
+	want(t, rec, http.StatusOK)
+	want(t, c.do(http.MethodPost, "/fonts", "font/ttf", strings.NewReader("not a font")), http.StatusUnprocessableEntity)
 }

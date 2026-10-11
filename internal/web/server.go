@@ -21,7 +21,7 @@ import (
 	"github.com/Henk476/qr-generator/internal/api"
 	"github.com/Henk476/qr-generator/internal/encode"
 	"github.com/Henk476/qr-generator/internal/i18n"
-	"github.com/Henk476/qr-generator/internal/logo"
+	"github.com/Henk476/qr-generator/internal/render"
 	"github.com/Henk476/qr-generator/internal/store"
 )
 
@@ -49,6 +49,7 @@ type Server struct {
 	options   *designOptions
 	apiToken  atomic.Pointer[string]
 	logoCache sync.Map // asset ID -> decoded image.Image; assets never change
+	fontCache sync.Map // asset ID -> *render.Font
 	handler   http.Handler
 }
 
@@ -117,7 +118,7 @@ func New(ctx context.Context, st *store.Store, opts Options) (*Server, error) {
 	mux.HandleFunc("GET /backup", s.handleBackup)
 	mux.HandleFunc("POST /restore", s.handleRestore)
 	mux.HandleFunc("POST /settings/api-token", s.handleNewAPIToken)
-	mux.Handle(api.Prefix+"/", api.New(st, api.Options{Token: s.APIToken, Assets: s.assetLoader}))
+	mux.Handle(api.Prefix+"/", api.New(st, api.Options{Token: s.APIToken, Assets: s.assetLoader, Fonts: s.fontLoader}))
 
 	s.handler = s.secure(mux)
 	return s, nil
@@ -147,7 +148,7 @@ func (s *Server) secure(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		limit := int64(logo.MaxBytes + 1<<20) // room for a logo or CSV upload
+		limit := int64(render.MaxFontBytes + 1<<20) // room for a font, logo or CSV upload
 		if r.URL.Path == "/restore" {
 			limit = maxRestoreBytes + 1<<20
 		}

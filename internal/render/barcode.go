@@ -67,7 +67,7 @@ func BuildBarcodeScene(g *barcode.Grid, text string, s Style) (*Scene, error) {
 	sc.Items = append(sc.Items, Item{Path: p, Paint: fg, Snap: true})
 	if g.Linear && text != "" {
 		band := Rect{qx, q + barH + textH*0.15, float64(g.W), textH * 0.85}
-		sc.Items = append(sc.Items, Item{Path: textInBox(text, "mono", band, 0.85), Paint: SolidPaint(s.Foreground)})
+		sc.Items = append(sc.Items, Item{Path: textInBox(text, fontFor("mono"), band, 0.85), Paint: SolidPaint(s.Foreground)})
 	}
 	return sc, nil
 }

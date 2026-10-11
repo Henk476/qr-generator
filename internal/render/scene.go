@@ -1,6 +1,7 @@
 package render
 
 import (
+	"cmp"
 	"image"
 	"image/color"
 	"math"
@@ -120,16 +121,22 @@ func BuildScene(m *matrix.Matrix, s Style) (*Scene, error) {
 	if s.EyeInnerColor != nil {
 		innerPaint = SolidPaint(*s.EyeInnerColor)
 	}
-	var outer, inner Path
-	for _, o := range m.FinderOrigins() {
+	for i, o := range m.FinderOrigins() {
 		x, y := ox+float64(o[0]), oy+float64(o[1])
-		outer.Append(eyeOuterPath(s.EyeOuter, x, y))
-		inner.Append(eyeInnerPath(s.EyeInner, x+2, y+2))
+		e := s.PerEye[i]
+		outerShape, innerShape := cmp.Or(e.Outer, s.EyeOuter), cmp.Or(e.Inner, s.EyeInner)
+		op, ip := outerPaint, innerPaint
+		if e.OuterColor != nil {
+			op = SolidPaint(*e.OuterColor)
+		}
+		if e.InnerColor != nil {
+			ip = SolidPaint(*e.InnerColor)
+		}
+		sc.Items = append(sc.Items,
+			Item{Path: eyeOuterPath(outerShape, x, y), Paint: op, Snap: outerShape == "" || outerShape == "square"},
+			Item{Path: eyeInnerPath(innerShape, x+2, y+2), Paint: ip, Snap: innerShape == "" || innerShape == "square"},
+		)
 	}
-	sc.Items = append(sc.Items,
-		Item{Path: outer, Paint: outerPaint, Snap: s.EyeOuter == "" || s.EyeOuter == "square"},
-		Item{Path: inner, Paint: innerPaint, Snap: s.EyeInner == "" || s.EyeInner == "square"},
-	)
 
 	if l := s.Logo; l != nil {
 		sc.Items = append(sc.Items, logoItems(l, logoBox, fg, sc.CodeBackground)...)

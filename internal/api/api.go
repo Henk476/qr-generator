@@ -37,6 +37,7 @@ const Prefix = "/api/v1"
 type Options struct {
 	Token  func() string                              // the current API token
 	Assets func(context.Context) generate.AssetLoader // resolves uploaded logos
+	Fonts  func(context.Context) generate.FontLoader  // resolves uploaded fonts
 }
 
 // API serves the REST endpoints.
@@ -65,6 +66,7 @@ func New(st *store.Store, opts Options) *API {
 		"POST /presets":         a.createPreset,
 		"DELETE /presets/{id}":  a.deletePreset,
 		"POST /assets":          a.uploadAsset,
+		"POST /fonts":           a.uploadFont,
 		"POST /batch":           a.batch,
 	}
 	for pattern, h := range routes {
@@ -250,7 +252,7 @@ func (a *API) prepare(w http.ResponseWriter, r *http.Request, req renderRequest)
 
 func (a *API) prepareDesign(w http.ResponseWriter, r *http.Request, typ string, fields map[string]string, design generate.Design) (*generate.Code, bool) {
 	code, err := generate.Prepare(generate.Request{
-		Type: typ, Fields: fields, Design: design, Assets: a.opts.Assets(r.Context()),
+		Type: typ, Fields: fields, Design: design, Assets: a.opts.Assets(r.Context()), Fonts: a.opts.Fonts(r.Context()),
 	})
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
@@ -379,7 +381,7 @@ func (a *API) apply(ctx context.Context, c *store.Code, in codeInput) error {
 	if c.Fields == nil {
 		c.Fields = map[string]string{}
 	}
-	if _, err := generate.Prepare(generate.Request{Type: c.Type, Fields: c.Fields, Design: c.Design, Assets: a.opts.Assets(ctx)}); err != nil {
+	if _, err := generate.Prepare(generate.Request{Type: c.Type, Fields: c.Fields, Design: c.Design, Assets: a.opts.Assets(ctx), Fonts: a.opts.Fonts(ctx)}); err != nil {
 		return err
 	}
 	if c.Name == "" {
@@ -619,7 +621,7 @@ func (a *API) batch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var buf bytes.Buffer
-	results, err := batch.Generate(&buf, rows, batch.Options{Design: design, Assets: a.opts.Assets(r.Context()), Export: opts, Verify: true})
+	results, err := batch.Generate(&buf, rows, batch.Options{Design: design, Assets: a.opts.Assets(r.Context()), Fonts: a.opts.Fonts(r.Context()), Export: opts, Verify: true})
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -628,4 +630,35 @@ func (a *API) batch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("X-Canute-Summary", fmt.Sprintf("ok=%d warnings=%d failed=%d", ok, warned, failed))
 	w.Write(buf.Bytes())
+}
+
+// uploadFont accepts a TTF or OTF file as multipart field "file", or as the
+// raw body, and returns the value to use as a design's frameFont.
+func (a *API) uploadFont(w http.ResponseWriter, r *http.Request) {
+	var src io.Reader = r.Body
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		f, _, err := r.FormFile("file")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, `send the font as multipart field "file" or as the request body`)
+			return
+		}
+		defer f.Close()
+		src = f
+	}
+	data, err := io.ReadAll(io.LimitReader(src, render.MaxFontBytes+1))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	font, err := render.ParseFont(data)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	id, err := a.store.SaveAsset(r.Context(), "font", "font/sfnt", data)
+	if err != nil {
+		a.storeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"id": id, "font": "asset:" + id, "name": font.Name()})
 }

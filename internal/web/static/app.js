@@ -53,7 +53,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const refresh = async () => {
     const mine = ++seq;
     const fd = new FormData(editor);
-    fd.delete("logo_file"); // uploads go through the Upload action only
+    fd.delete("logo_file"); // uploads go through the Upload actions only
+    fd.delete("font_file");
     const body = new URLSearchParams(fd);
     body.set("action", "preview");
     preview.querySelector(".qr")?.classList.add("is-loading");
@@ -89,6 +90,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const fd = new FormData(editor);
       fd.delete("logo_file");
+      fd.delete("font_file");
       const body = new URLSearchParams(fd);
       body.set("action", "download");
       body.set("format", "png");
