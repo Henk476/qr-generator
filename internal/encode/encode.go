@@ -9,15 +9,41 @@ package encode
 import (
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 )
 
 // Field describes one input of a content type.
 type Field struct {
 	Name     string
-	Usage    string
+	Label    string // form label
+	Usage    string // one-line help (CLI flag usage)
 	Required bool
+
+	// Form hints.
+	Kind        Kind
+	Options     []string // choices for KindSelect
+	Placeholder string
+}
+
+// Kind tells forms which input control to use for a field.
+type Kind string
+
+const (
+	KindText     Kind = "text"
+	KindTextarea Kind = "textarea"
+	KindSelect   Kind = "select"
+	KindCheckbox Kind = "checkbox" // value "true" when checked
+	KindEmail    Kind = "email"
+	KindTel      Kind = "tel"
+	KindURL      Kind = "url"
+)
+
+// InputKind returns the field's Kind, defaulting to KindText.
+func (f Field) InputKind() Kind {
+	if f.Kind == "" {
+		return KindText
+	}
+	return f.Kind
 }
 
 // Type is a QR content type such as "url" or "wifi".
@@ -69,13 +95,17 @@ func (t Type) fieldNames() []string {
 // fields is the trimmed input map handed to builders.
 type fields map[string]string
 
-var registry = map[string]Type{}
+var (
+	registry = map[string]Type{}
+	order    []string // registration order, which is the display order
+)
 
 func register(t Type) {
 	if _, dup := registry[t.Name]; dup {
 		panic("encode: duplicate type " + t.Name)
 	}
 	registry[t.Name] = t
+	order = append(order, t.Name)
 }
 
 // Lookup returns the content type with the given name.
@@ -84,13 +114,12 @@ func Lookup(name string) (Type, bool) {
 	return t, ok
 }
 
-// Types returns all content types sorted by name.
+// Types returns all content types in display order (most common first).
 func Types() []Type {
-	ts := make([]Type, 0, len(registry))
-	for _, t := range registry {
-		ts = append(ts, t)
+	ts := make([]Type, len(order))
+	for i, name := range order {
+		ts[i] = registry[name]
 	}
-	sort.Slice(ts, func(i, j int) bool { return ts[i].Name < ts[j].Name })
 	return ts
 }
 

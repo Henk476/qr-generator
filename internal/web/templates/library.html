@@ -1,0 +1,51 @@
+{{define "library"}}{{template "head" .}}
+<div class="page-head">
+  <h1>Library</h1>
+  <a class="btn btn-primary" href="/new">New code</a>
+</div>
+
+{{if .Total}}
+<form class="filters" method="get" action="/library" role="search">
+  <input type="search" name="q" value="{{.Filter.Query}}" placeholder="Search names and content" aria-label="Search">
+  <select name="type" aria-label="Type">
+    <option value="">All types</option>
+    {{range .Types}}<option value="{{.Name}}"{{if eq .Name $.Filter.Type}} selected{{end}}>{{.Title}}</option>{{end}}
+  </select>
+  <select name="tag" aria-label="Tag">
+    <option value="">All tags</option>
+    {{range .Tags}}<option value="{{.}}"{{if eq . $.Filter.Tag}} selected{{end}}>{{.}}</option>{{end}}
+  </select>
+  <select name="sort" aria-label="Sort">
+    <option value="updated"{{if eq .Filter.Sort "updated"}} selected{{end}}>Recently changed</option>
+    <option value="created"{{if eq .Filter.Sort "created"}} selected{{end}}>Recently created</option>
+    <option value="name"{{if eq .Filter.Sort "name"}} selected{{end}}>Name</option>
+  </select>
+  <button class="btn" type="submit">Filter</button>
+</form>
+{{end}}
+
+{{if .Codes}}
+<ul class="cards">
+  {{range .Codes}}
+  <li class="card">
+    <a class="thumb" href="/codes/{{.ID}}"><img src="/codes/{{.ID}}/image?format=svg&amp;size=256" alt="" loading="lazy" width="128" height="128"></a>
+    <div class="card-body">
+      <h2><a href="/codes/{{.ID}}">{{.Name}}</a></h2>
+      <p class="meta">{{typeTitle .Type}} · changed {{date .UpdatedAt}}</p>
+      {{if .Tags}}<p class="tags">{{range .Tags}}<a class="tag" href="/library?tag={{.}}">{{.}}</a>{{end}}</p>{{end}}
+      <div class="card-actions">
+        <a class="btn btn-small" href="/codes/{{.ID}}/image?format=png&amp;size={{$.Size}}&amp;download">PNG</a>
+        <a class="btn btn-small" href="/codes/{{.ID}}/image?format=svg&amp;size={{$.Size}}&amp;download">SVG</a>
+        <form method="post" action="/codes/{{.ID}}/duplicate"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn btn-small" type="submit">Duplicate</button></form>
+        <form method="post" action="/codes/{{.ID}}/delete" data-confirm="Delete “{{.Name}}”? This cannot be undone."><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn btn-small btn-danger" type="submit">Delete</button></form>
+      </div>
+    </div>
+  </li>
+  {{end}}
+</ul>
+{{else if .Total}}
+<p class="empty">No codes match these filters. <a href="/library">Clear filters</a></p>
+{{else}}
+<p class="empty">Your library is empty. Create a code and choose <strong>Save to library</strong> to keep it here.</p>
+{{end}}
+{{template "foot" .}}{{end}}

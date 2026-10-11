@@ -14,26 +14,28 @@ import (
 func init() {
 	register(Type{
 		Name: "url", Title: "Link", Primary: "url",
-		Fields: []Field{{Name: "url", Usage: "web address; https:// is added when no scheme is given", Required: true}},
-		build:  buildURL,
+		Fields: []Field{{Name: "url", Label: "Website address", Kind: KindURL, Placeholder: "https://example.com",
+			Usage: "web address; https:// is added when no scheme is given", Required: true}},
+		build: buildURL,
 	})
 	register(Type{
 		Name: "text", Title: "Text", Primary: "text",
-		Fields: []Field{{Name: "text", Usage: "free text", Required: true}},
+		Fields: []Field{{Name: "text", Label: "Text", Kind: KindTextarea, Usage: "free text", Required: true}},
 		build:  func(f fields) (string, error) { return f["text"], nil },
 	})
 	register(Type{
 		Name: "email", Title: "E-mail", Primary: "to",
 		Fields: []Field{
-			{Name: "to", Usage: "recipient address", Required: true},
-			{Name: "subject", Usage: "subject line"},
-			{Name: "body", Usage: "message body"},
+			{Name: "to", Label: "To", Kind: KindEmail, Placeholder: "name@example.com", Usage: "recipient address", Required: true},
+			{Name: "subject", Label: "Subject", Usage: "subject line"},
+			{Name: "body", Label: "Message", Kind: KindTextarea, Usage: "message body"},
 		},
 		build: buildEmail,
 	})
 	register(Type{
 		Name: "call", Title: "Call", Primary: "phone",
-		Fields: []Field{{Name: "phone", Usage: "phone number, international format preferred (+15551234567)", Required: true}},
+		Fields: []Field{{Name: "phone", Label: "Phone number", Kind: KindTel, Placeholder: "+15551234567",
+			Usage: "phone number, international format preferred (+15551234567)", Required: true}},
 		build: func(f fields) (string, error) {
 			p, err := normalizePhone(f["phone"])
 			if err != nil {
@@ -45,8 +47,8 @@ func init() {
 	register(Type{
 		Name: "sms", Title: "SMS", Primary: "phone",
 		Fields: []Field{
-			{Name: "phone", Usage: "recipient phone number", Required: true},
-			{Name: "message", Usage: "prefilled message"},
+			{Name: "phone", Label: "Phone number", Kind: KindTel, Placeholder: "+15551234567", Usage: "recipient phone number", Required: true},
+			{Name: "message", Label: "Message", Kind: KindTextarea, Usage: "prefilled message"},
 		},
 		build: func(f fields) (string, error) {
 			p, err := normalizePhone(f["phone"])
@@ -59,51 +61,54 @@ func init() {
 	register(Type{
 		Name: "whatsapp", Title: "WhatsApp", Primary: "phone",
 		Fields: []Field{
-			{Name: "phone", Usage: "WhatsApp number in international format (+15551234567)", Required: true},
-			{Name: "message", Usage: "prefilled message"},
+			{Name: "phone", Label: "WhatsApp number", Kind: KindTel, Placeholder: "+15551234567",
+				Usage: "WhatsApp number in international format (+15551234567)", Required: true},
+			{Name: "message", Label: "Message", Kind: KindTextarea, Usage: "prefilled message"},
 		},
 		build: buildWhatsApp,
 	})
 	register(Type{
 		Name: "wifi", Title: "Wi-Fi", Primary: "ssid",
 		Fields: []Field{
-			{Name: "ssid", Usage: "network name", Required: true},
-			{Name: "password", Usage: "network password"},
-			{Name: "enc", Usage: "WPA (also WPA2/WPA3), WEP or nopass; default WPA with a password, nopass without"},
-			{Name: "hidden", Usage: "true if the network does not broadcast its name"},
+			{Name: "ssid", Label: "Network name (SSID)", Usage: "network name", Required: true},
+			{Name: "password", Label: "Password", Usage: "network password"},
+			{Name: "enc", Label: "Security", Kind: KindSelect, Options: []string{"WPA", "WEP", "nopass"},
+				Usage: "WPA (also WPA2/WPA3), WEP or nopass; default WPA with a password, nopass without"},
+			{Name: "hidden", Label: "Hidden network", Kind: KindCheckbox, Usage: "true if the network does not broadcast its name"},
 		},
 		build: buildWiFi,
 	})
 	register(Type{
 		Name: "vcard", Title: "vCard",
 		Fields: []Field{
-			{Name: "first", Usage: "first name"},
-			{Name: "last", Usage: "last name"},
-			{Name: "org", Usage: "organization"},
-			{Name: "title", Usage: "job title"},
-			{Name: "phone", Usage: "work phone"},
-			{Name: "mobile", Usage: "mobile phone"},
-			{Name: "email", Usage: "e-mail address"},
-			{Name: "url", Usage: "website"},
-			{Name: "street", Usage: "street address"},
-			{Name: "city", Usage: "city"},
-			{Name: "region", Usage: "state or region"},
-			{Name: "zip", Usage: "postal code"},
-			{Name: "country", Usage: "country"},
-			{Name: "note", Usage: "note"},
-			{Name: "variant", Usage: "vcard (default) or mecard (smaller code, fewer fields)"},
+			{Name: "first", Label: "First name", Usage: "first name"},
+			{Name: "last", Label: "Last name", Usage: "last name"},
+			{Name: "org", Label: "Organization", Usage: "organization"},
+			{Name: "title", Label: "Job title", Usage: "job title"},
+			{Name: "phone", Label: "Work phone", Kind: KindTel, Usage: "work phone"},
+			{Name: "mobile", Label: "Mobile phone", Kind: KindTel, Usage: "mobile phone"},
+			{Name: "email", Label: "E-mail", Kind: KindEmail, Usage: "e-mail address"},
+			{Name: "url", Label: "Website", Kind: KindURL, Usage: "website"},
+			{Name: "street", Label: "Street", Usage: "street address"},
+			{Name: "city", Label: "City", Usage: "city"},
+			{Name: "region", Label: "State / region", Usage: "state or region"},
+			{Name: "zip", Label: "Postal code", Usage: "postal code"},
+			{Name: "country", Label: "Country", Usage: "country"},
+			{Name: "note", Label: "Note", Kind: KindTextarea, Usage: "note"},
+			{Name: "variant", Label: "Format", Kind: KindSelect, Options: []string{"vcard", "mecard"},
+				Usage: "vcard (default) or mecard (smaller code, fewer fields)"},
 		},
 		build: buildVCard,
 	})
 	register(Type{
 		Name: "event", Title: "Event", Primary: "title",
 		Fields: []Field{
-			{Name: "title", Usage: "event name", Required: true},
-			{Name: "start", Usage: "start: 2026-10-11, 2026-10-11 14:30 or RFC 3339", Required: true},
-			{Name: "end", Usage: "end, same formats as start; default 1 hour (or 1 day for all-day events)"},
-			{Name: "tz", Usage: "IANA time zone for start/end, e.g. Europe/Amsterdam; times are converted to UTC"},
-			{Name: "location", Usage: "location"},
-			{Name: "description", Usage: "description"},
+			{Name: "title", Label: "Event name", Usage: "event name", Required: true},
+			{Name: "start", Label: "Start", Placeholder: "2026-10-11 14:30", Usage: "start: 2026-10-11, 2026-10-11 14:30 or RFC 3339", Required: true},
+			{Name: "end", Label: "End", Placeholder: "2026-10-11 16:00", Usage: "end, same formats as start; default 1 hour (or 1 day for all-day events)"},
+			{Name: "tz", Label: "Time zone", Placeholder: "Europe/Amsterdam", Usage: "IANA time zone for start/end, e.g. Europe/Amsterdam; times are converted to UTC"},
+			{Name: "location", Label: "Location", Usage: "location"},
+			{Name: "description", Label: "Description", Kind: KindTextarea, Usage: "description"},
 		},
 		build: buildEvent,
 	})

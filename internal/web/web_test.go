@@ -1,0 +1,334 @@
+package web
+
+import (
+	"context"
+	"image/png"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/Henk476/qr-generator/internal/encode"
+	"github.com/Henk476/qr-generator/internal/store"
+	"github.com/Henk476/qr-generator/internal/verify"
+)
+
+type testApp struct {
+	t     *testing.T
+	srv   *Server
+	store *store.Store
+}
+
+func newTestApp(t *testing.T) *testApp {
+	t.Helper()
+	st, err := store.Open(filepath.Join(t.TempDir(), "web.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	// httptest requests use Host "example.com".
+	srv, err := New(context.Background(), st, Options{AllowedHosts: []string{"example.com"}, Version: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &testApp{t: t, srv: srv, store: st}
+}
+
+func (a *testApp) do(req *http.Request) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	a.srv.ServeHTTP(rec, req)
+	return rec
+}
+
+func (a *testApp) get(path string) *httptest.ResponseRecorder {
+	return a.do(httptest.NewRequest(http.MethodGet, path, nil))
+}
+
+// post submits form values with a valid CSRF token.
+func (a *testApp) post(path string, v url.Values) *httptest.ResponseRecorder {
+	if v == nil {
+		v = url.Values{}
+	}
+	if !v.Has("csrf") {
+		v.Set("csrf", a.srv.csrf)
+	}
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(v.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return a.do(req)
+}
+
+// editorForm is a complete editor submission for a URL code.
+func editorForm(action string, extra ...string) url.Values {
+	v := url.Values{
+		"type": {"url"}, "f.url": {"example.com"}, "ecc": {"M"}, "quiet": {"4"}, "version": {"0"},
+		"fg": {"#1b2a49"}, "bg": {"#ffffff"}, "format": {"png"}, "size": {"512"}, "action": {action},
+	}
+	for i := 0; i+1 < len(extra); i += 2 {
+		v.Set(extra[i], extra[i+1])
+	}
+	return v
+}
+
+func wantStatus(t *testing.T, rec *httptest.ResponseRecorder, code int) {
+	t.Helper()
+	if rec.Code != code {
+		t.Fatalf("status %d, want %d; body: %.300s", rec.Code, code, rec.Body.String())
+	}
+}
+
+func wantBody(t *testing.T, rec *httptest.ResponseRecorder, subs ...string) {
+	t.Helper()
+	for _, s := range subs {
+		if !strings.Contains(rec.Body.String(), s) {
+			t.Errorf("body missing %q", s)
+		}
+	}
+}
+
+func TestEditorPages(t *testing.T) {
+	a := newTestApp(t)
+
+	rec := a.get("/")
+	wantStatus(t, rec, http.StatusSeeOther)
+	if loc := rec.Header().Get("Location"); loc != "/new" {
+		t.Errorf("redirect to %q", loc)
+	}
+
+	rec = a.get("/new")
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, `name="csrf" value="`+a.srv.csrf, "Website address", "Fill in the content", `aria-pressed="true">Link<`)
+	if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'") {
+		t.Errorf("CSP = %q", csp)
+	}
+
+	rec = a.get("/new?type=wifi&preset=midnight")
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, "Network name (SSID)", `name="f.hidden" value="true"`, `value="#1b2a49"`)
+
+	wantStatus(t, a.get("/static/app.css"), http.StatusOK)
+	wantStatus(t, a.get("/codes/nope"), http.StatusNotFound)
+}
+
+func TestPreview(t *testing.T) {
+	a := newTestApp(t)
+
+	rec := a.post("/preview", editorForm("preview"))
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, "<svg", `fill="#1b2a49"`, "Scan check passed", "ECC M")
+	if strings.Contains(rec.Body.String(), "<html") {
+		t.Error("preview should be a fragment")
+	}
+
+	rec = a.post("/preview", editorForm("preview", "f.url", ""))
+	wantBody(t, rec, "Fill in the content")
+
+	rec = a.post("/preview", editorForm("preview", "type", "call", "f.phone", "not a number"))
+	wantBody(t, rec, "invalid phone number")
+
+	rec = a.post("/preview", editorForm("preview", "fg", "#eeeeee"))
+	wantBody(t, rec, "low contrast")
+
+	rec = a.post("/preview", editorForm("preview", "bg_transparent", "1"))
+	wantBody(t, rec, "qr checker")
+}
+
+func TestTypeSwitchKeepsDesign(t *testing.T) {
+	a := newTestApp(t)
+	rec := a.post("/new", editorForm("type:sms", "f.phone", "+31612345678", "ecc", "H"))
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, `aria-pressed="true">SMS<`, `value="&#43;31612345678"`, `value="#1b2a49"`, `value="H" selected`)
+}
+
+func TestDownload(t *testing.T) {
+	a := newTestApp(t)
+	rec := a.post("/new", editorForm("download", "name", "My Site!"))
+	wantStatus(t, rec, http.StatusOK)
+	if ct := rec.Header().Get("Content-Type"); ct != "image/png" {
+		t.Fatalf("Content-Type %q", ct)
+	}
+	if cd := rec.Header().Get("Content-Disposition"); cd != `attachment; filename="my-site.png"` {
+		t.Errorf("Content-Disposition %q", cd)
+	}
+	img, err := png.Decode(rec.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := verify.Decode(img); err != nil || got != "https://example.com" {
+		t.Errorf("decoded %q, %v", got, err)
+	}
+
+	rec = a.post("/new", editorForm("download", "format", "svg"))
+	if cd := rec.Header().Get("Content-Disposition"); !strings.Contains(cd, `filename="link-example-com.svg"`) {
+		t.Errorf("default name Content-Disposition %q", cd)
+	}
+
+	rec = a.post("/new", editorForm("download", "size", "20"))
+	wantStatus(t, rec, http.StatusUnprocessableEntity)
+	wantBody(t, rec, "size must be")
+}
+
+func TestSaveEditLibrary(t *testing.T) {
+	a := newTestApp(t)
+	ctx := context.Background()
+
+	// Invalid content is not saved.
+	rec := a.post("/new", editorForm("save", "f.url", "javascript://x"))
+	wantStatus(t, rec, http.StatusUnprocessableEntity)
+	wantBody(t, rec, "Cannot save")
+
+	rec = a.post("/new", editorForm("save", "name", "<b>Shop</b>", "tags", "work, promo"))
+	wantStatus(t, rec, http.StatusSeeOther)
+	loc := rec.Header().Get("Location")
+	id := strings.TrimSuffix(strings.TrimPrefix(loc, "/codes/"), "?saved")
+	c, err := a.store.GetCode(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Name != "<b>Shop</b>" || c.Fields["url"] != "example.com" || c.Design.Foreground != "#1b2a49" || len(c.Tags) != 2 {
+		t.Fatalf("saved code %+v", c)
+	}
+
+	rec = a.get(loc)
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, "Saved to your library", "Save changes", "&lt;b&gt;Shop&lt;/b&gt;")
+
+	rec = a.get("/library")
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, "&lt;b&gt;Shop&lt;/b&gt;", "/codes/"+id+"/image", `href="/library?tag=work"`)
+	if strings.Contains(rec.Body.String(), "<b>Shop</b>") {
+		t.Error("name not escaped")
+	}
+	wantBody(t, a.get("/library?q=nomatch"), "No codes match")
+	wantBody(t, a.get("/library?tag=promo"), "/codes/"+id)
+
+	rec = a.get("/codes/" + id + "/image")
+	wantStatus(t, rec, http.StatusOK)
+	if ct := rec.Header().Get("Content-Type"); ct != "image/svg+xml" {
+		t.Errorf("image Content-Type %q", ct)
+	}
+	rec = a.get("/codes/" + id + "/image?format=png&size=256&download")
+	if cd := rec.Header().Get("Content-Disposition"); cd != `attachment; filename="b-shop-b.png"` {
+		t.Errorf("Content-Disposition %q", cd)
+	}
+
+	// Update in place, then save a copy.
+	rec = a.post("/codes/"+id, editorForm("save", "name", "Shop", "f.url", "shop.example.com"))
+	wantStatus(t, rec, http.StatusSeeOther)
+	c, _ = a.store.GetCode(ctx, id)
+	if c.Name != "Shop" || c.Fields["url"] != "shop.example.com" {
+		t.Errorf("after update %+v", c)
+	}
+	rec = a.post("/codes/"+id, editorForm("save-new", "name", "Shop 2"))
+	wantStatus(t, rec, http.StatusSeeOther)
+	if strings.Contains(rec.Header().Get("Location"), id) {
+		t.Error("save-new should create a new code")
+	}
+
+	wantStatus(t, a.post("/codes/"+id+"/duplicate", nil), http.StatusSeeOther)
+	all, _ := a.store.ListCodes(ctx, store.ListOptions{})
+	if len(all) != 3 {
+		t.Fatalf("%d codes, want 3", len(all))
+	}
+	wantStatus(t, a.post("/codes/"+id+"/delete", nil), http.StatusSeeOther)
+	wantStatus(t, a.get("/codes/"+id), http.StatusNotFound)
+	wantStatus(t, a.post("/codes/"+id+"/delete", nil), http.StatusNotFound)
+	wantStatus(t, a.post("/codes/"+id, editorForm("save")), http.StatusNotFound)
+}
+
+func TestPresets(t *testing.T) {
+	a := newTestApp(t)
+	ctx := context.Background()
+
+	rec := a.post("/new", editorForm("save-preset", "preset_name", ""))
+	wantStatus(t, rec, http.StatusUnprocessableEntity)
+
+	rec = a.post("/new", editorForm("save-preset", "preset_name", "Navy", "ecc", "Q"))
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, `Preset &#34;Navy&#34; saved`, "Navy (yours)")
+	ps, _ := a.store.ListPresets(ctx)
+	mine := ps[len(ps)-1]
+	if mine.Name != "Navy" || mine.Design.ECC != "Q" || mine.Design.Foreground != "#1b2a49" {
+		t.Fatalf("saved preset %+v", mine)
+	}
+
+	rec = a.post("/new", editorForm("apply-preset", "preset", "ocean"))
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, `value="#0b5d7a"`, `value="example.com"`)
+
+	rec = a.get("/presets")
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, "Classic", "Navy", "/presets/"+mine.ID+"/delete")
+	if strings.Contains(rec.Body.String(), "/presets/classic/delete") {
+		t.Error("built-in preset offers delete")
+	}
+	rec = a.get("/presets/classic/image")
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, "<svg")
+
+	wantStatus(t, a.post("/presets/classic/delete", nil), http.StatusForbidden)
+	wantStatus(t, a.post("/presets/"+mine.ID+"/delete", nil), http.StatusSeeOther)
+	wantStatus(t, a.post("/presets/"+mine.ID+"/delete", nil), http.StatusNotFound)
+}
+
+func TestSettings(t *testing.T) {
+	a := newTestApp(t)
+	rec := a.post("/settings", url.Values{"theme": {"dark"}, "format": {"svg"}, "size": {"2048"}, "ecc": {"Q"}})
+	wantStatus(t, rec, http.StatusSeeOther)
+
+	rec = a.get("/new")
+	wantBody(t, rec, `data-theme="dark"`, `value="svg" selected`, `value="2048"`, `value="Q" selected`)
+
+	rec = a.post("/settings", url.Values{"theme": {""}, "format": {"svg"}, "size": {"99999"}, "ecc": {"Q"}})
+	wantStatus(t, rec, http.StatusUnprocessableEntity)
+	wantBody(t, rec, "Size must be")
+	rec = a.post("/settings", url.Values{"theme": {"neon"}, "format": {"png"}, "size": {"512"}, "ecc": {"M"}})
+	wantStatus(t, rec, http.StatusUnprocessableEntity)
+}
+
+func TestSecurity(t *testing.T) {
+	a := newTestApp(t)
+
+	rec := a.post("/new", url.Values{"csrf": {"wrong"}, "action": {"save"}})
+	wantStatus(t, rec, http.StatusForbidden)
+	rec = a.post("/preview", url.Values{"csrf": {""}})
+	wantStatus(t, rec, http.StatusForbidden)
+
+	req := httptest.NewRequest(http.MethodPost, "/codes/x/delete", strings.NewReader("csrf="+a.srv.csrf))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	wantStatus(t, a.do(req), http.StatusForbidden)
+
+	req = httptest.NewRequest(http.MethodGet, "/new", nil)
+	req.Host = "evil.example:8080"
+	wantStatus(t, a.do(req), http.StatusMisdirectedRequest)
+
+	// The token survives a restart.
+	srv2, err := New(context.Background(), a.store, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv2.csrf != a.srv.csrf {
+		t.Error("CSRF token changed across restarts")
+	}
+}
+
+func TestDefaultNameAndSlug(t *testing.T) {
+	tests := []struct{ typ, want string }{
+		{"url", "Link: example.com"},
+		{"vcard", "vCard: Canute Knutsson"},
+	}
+	fields := map[string]string{"url": "example.com", "first": "Canute", "last": "Knutsson"}
+	for _, tt := range tests {
+		ty, _ := encode.Lookup(tt.typ)
+		if got := defaultName(ty, fields); got != tt.want {
+			t.Errorf("defaultName(%s) = %q, want %q", tt.typ, got, tt.want)
+		}
+	}
+	for in, want := range map[string]string{"Hello, World!": "hello-world", "日本": "qr-code", "--a--": "a"} {
+		if got := slug(in); got != want {
+			t.Errorf("slug(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

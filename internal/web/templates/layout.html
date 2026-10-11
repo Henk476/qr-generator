@@ -1,0 +1,32 @@
+{{define "head"}}<!doctype html>
+<html lang="en"{{if .Theme}} data-theme="{{.Theme}}"{{end}}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Canute's QR Generator</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <a class="brand" href="/new"><img src="/static/favicon.svg" alt="" width="28" height="28"> Canute's QR Generator</a>
+  <nav aria-label="Main">
+    <a href="/new"{{if eq .Nav "new"}} aria-current="page"{{end}}>New code</a>
+    <a href="/library"{{if eq .Nav "library"}} aria-current="page"{{end}}>Library</a>
+    <a href="/presets"{{if eq .Nav "presets"}} aria-current="page"{{end}}>Presets</a>
+    <a href="/settings"{{if eq .Nav "settings"}} aria-current="page"{{end}}>Settings</a>
+  </nav>
+</header>
+<main id="main">
+{{if .Flash}}<p class="banner banner-ok" role="status">{{.Flash}}</p>{{end}}
+{{if .Error}}<p class="banner banner-error" role="alert">{{.Error}}</p>{{end}}
+{{end}}
+
+{{define "foot"}}
+</main>
+<footer class="footer">Canute's QR Generator {{.Version}} · runs on your machine · no ads, no tracking</footer>
+</body>
+</html>
+{{end}}

@@ -3,7 +3,7 @@
 Static QR codes, made locally. No ads, no accounts, no tracking, no network calls.
 Written in Go; ships as a single binary. See [SPEC.md](SPEC.md) for the full plan.
 
-> **Status:** milestone M1 (core engine + CLI). The web UI arrives in M2.
+> **Status:** milestones M1 (core engine + CLI) and M2 (web UI, library, presets) are done. Next: M3, full design options.
 
 ## Build
 
@@ -14,6 +14,19 @@ go build -o canute-qr ./cmd/canute-qr
 ```
 
 ## Use
+
+### Web UI
+
+```bash
+canute-qr serve --open
+```
+
+Opens http://127.0.0.1:8080: pick a content type, style it with a live preview, then
+download it or save it to your library. Your library, presets and settings are stored in
+SQLite in your user config folder (`--data-dir` to change). The UI only listens on your
+own machine.
+
+### Command line
 
 ```bash
 canute-qr generate --data https://example.com -o link.png

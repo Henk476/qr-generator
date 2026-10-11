@@ -12,9 +12,8 @@ import (
 	"strings"
 
 	"github.com/Henk476/qr-generator/internal/encode"
-	"github.com/Henk476/qr-generator/internal/matrix"
+	"github.com/Henk476/qr-generator/internal/generate"
 	"github.com/Henk476/qr-generator/internal/render"
-	"github.com/Henk476/qr-generator/internal/verify"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -27,6 +26,7 @@ func main() {
 const usageText = `Canute's QR Generator: static QR codes, made locally. No ads, no tracking.
 
 Usage:
+  canute-qr serve [flags]      start the web UI (default http://127.0.0.1:8080)
   canute-qr generate [flags]   create a QR code image
   canute-qr types              list content types and their fields
   canute-qr version            print the version
@@ -40,6 +40,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	switch args[0] {
+	case "serve":
+		return runServe(args[1:], stdout, stderr)
 	case "generate":
 		return runGenerate(args[1:], stdout, stderr)
 	case "types":
@@ -136,37 +138,21 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		return fail(err)
 	}
 
-	level, err := matrix.ParseLevel(*eccStr)
-	if err != nil {
-		return fail(err)
-	}
-	style := render.Style{QuietZone: *quiet}
-	if style.Foreground, err = render.ParseColor(*fgStr); err != nil {
-		return fail(fmt.Errorf("--fg: %w", err))
-	}
-	if style.Background, err = render.ParseColor(*bgStr); err != nil {
-		return fail(fmt.Errorf("--bg: %w", err))
-	}
-
-	payload, err := typ.Build(values)
-	if err != nil {
-		return fail(err)
-	}
-	m, err := matrix.Build(payload, matrix.Options{Level: level, Version: *qrVersion})
-	if err != nil {
-		return fail(err)
-	}
-	scene, err := render.BuildScene(m, style)
+	code, err := generate.Prepare(generate.Request{
+		Type:   typ.Name,
+		Fields: values,
+		Design: generate.Design{ECC: *eccStr, Version: *qrVersion, QuietZone: *quiet, Foreground: *fgStr, Background: *bgStr},
+	})
 	if err != nil {
 		return fail(err)
 	}
 	var buf bytes.Buffer
-	if err := render.Export(&buf, scene, format, *size); err != nil {
+	if err := code.Export(&buf, format, *size); err != nil {
 		return fail(err)
 	}
 
 	if !*noVerify {
-		report := verify.Check(payload, scene, *size)
+		report := code.Verify(*size)
 		for _, w := range report.Warnings {
 			fmt.Fprintln(stderr, "warning:", w)
 		}
@@ -184,7 +170,7 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		return fail(err)
 	}
 	if *out != "-" {
-		fmt.Fprintf(stderr, "wrote %s (%s, QR version %d, ECC %s, %d bytes encoded)\n", *out, format, m.Version, m.Level, len(payload))
+		fmt.Fprintf(stderr, "wrote %s (%s, QR version %d, ECC %s, %d bytes encoded)\n", *out, format, code.Matrix.Version, code.Matrix.Level, len(code.Payload))
 	}
 	return 0
 }

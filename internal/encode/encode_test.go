@@ -98,7 +98,7 @@ func TestBuildErrors(t *testing.T) {
 }
 
 func TestTypesRegistered(t *testing.T) {
-	want := []string{"call", "email", "event", "sms", "text", "url", "vcard", "whatsapp", "wifi"}
+	want := []string{"url", "text", "email", "call", "sms", "whatsapp", "wifi", "vcard", "event"}
 	ts := Types()
 	if len(ts) != len(want) {
 		t.Fatalf("got %d types, want %d", len(ts), len(want))
@@ -109,6 +109,19 @@ func TestTypesRegistered(t *testing.T) {
 		}
 		if ty.Primary != "" && !ty.hasField(ty.Primary) {
 			t.Errorf("%s: primary field %q is not a field", ty.Name, ty.Primary)
+		}
+	}
+}
+
+func TestFieldFormHints(t *testing.T) {
+	for _, ty := range Types() {
+		for _, f := range ty.Fields {
+			if f.Label == "" {
+				t.Errorf("%s.%s has no label", ty.Name, f.Name)
+			}
+			if (f.InputKind() == KindSelect) != (len(f.Options) > 0) {
+				t.Errorf("%s.%s: options only make sense for selects", ty.Name, f.Name)
+			}
 		}
 	}
 }

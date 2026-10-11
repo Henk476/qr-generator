@@ -71,7 +71,7 @@ func TestGenerateErrors(t *testing.T) {
 		{"bad format", []string{"generate", "--data", "a.com", "-o", "x.gif"}, 1, "unsupported format"},
 		{"stdout needs format", []string{"generate", "--data", "a.com", "-o", "-"}, 1, "--format is required"},
 		{"bad ecc", []string{"generate", "--data", "a.com", "--ecc", "Z", "-o", "x.png"}, 1, "L, M, Q or H"},
-		{"bad color", []string{"generate", "--data", "a.com", "--fg", "blue", "-o", "x.png"}, 1, "--fg"},
+		{"bad color", []string{"generate", "--data", "a.com", "--fg", "blue", "-o", "x.png"}, 1, "foreground"},
 		{"bad size", []string{"generate", "--data", "a.com", "--size", "50", "-o", "x.png"}, 1, "size must be"},
 		{"stray arg", []string{"generate", "--data", "a.com", "-o", "x.png", "extra"}, 2, "unexpected argument"},
 		{"unknown command", []string{"frobnicate"}, 2, "unknown command"},
@@ -114,5 +114,13 @@ func TestTypesAndVersion(t *testing.T) {
 	code, _, stderr := runCLI("generate", "-h")
 	if code != 0 || !strings.Contains(stderr, "--quiet-zone") {
 		t.Errorf("generate -h: exit %d\n%s", code, stderr)
+	}
+}
+
+func TestIsLoopback(t *testing.T) {
+	for host, want := range map[string]bool{"127.0.0.1": true, "::1": true, "localhost": true, "": false, "0.0.0.0": false, "192.168.1.5": false} {
+		if got := isLoopback(host); got != want {
+			t.Errorf("isLoopback(%q) = %v", host, got)
+		}
 	}
 }

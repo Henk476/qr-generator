@@ -1,0 +1,40 @@
+{{define "settings"}}{{template "head" .}}
+<div class="page-head">
+  <h1>Settings</h1>
+</div>
+<form class="panel" method="post" action="/settings">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <fieldset>
+    <legend>Appearance</legend>
+    <div class="field">
+      <label for="theme">Theme</label>
+      <select id="theme" name="theme">
+        <option value=""{{if eq .Theme ""}} selected{{end}}>Match system</option>
+        <option value="light"{{if eq .Theme "light"}} selected{{end}}>Light</option>
+        <option value="dark"{{if eq .Theme "dark"}} selected{{end}}>Dark</option>
+      </select>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Defaults for new codes</legend>
+    <div class="field">
+      <label for="format">Download format</label>
+      <select id="format" name="format">
+        <option value="png"{{if eq .Format "png"}} selected{{end}}>PNG</option>
+        <option value="svg"{{if eq .Format "svg"}} selected{{end}}>SVG</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="size">Download size (px)</label>
+      <input id="size" name="size" type="number" min="128" max="4096" value="{{.Size}}">
+    </div>
+    <div class="field">
+      <label for="ecc">Error correction</label>
+      <select id="ecc" name="ecc">
+        {{range .Levels}}<option value="{{.}}"{{if eq . $.ECC}} selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </div>
+  </fieldset>
+  <div class="actions"><button class="btn btn-primary" type="submit">Save settings</button></div>
+</form>
+{{template "foot" .}}{{end}}

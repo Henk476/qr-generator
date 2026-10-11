@@ -1,0 +1,9 @@
+{{define "preview"}}
+<div class="qr{{if .Transparent}} checker{{end}}{{if not .SVG}} qr-empty{{end}}">
+  {{if .SVG}}{{.SVG}}{{else if .Empty}}<p>Fill in the content to see your code.</p>{{else}}<p>No preview yet.</p>{{end}}
+</div>
+{{if .Error}}<p class="msg msg-error">{{.Error}}</p>{{end}}
+{{range .Warnings}}<p class="msg msg-warn">{{.}}</p>{{end}}
+{{if .OK}}<p class="msg msg-ok">Scan check passed.</p>{{end}}
+{{if .SVG}}<p class="meta">QR version {{.Version}} · {{.Modules}}×{{.Modules}} modules · ECC {{.ECC}} · {{.Bytes}} bytes</p>{{end}}
+{{end}}

@@ -1,0 +1,134 @@
+{{define "editor"}}{{template "head" .}}
+<form id="editor" class="editor" method="post" action="{{.Action}}" novalidate>
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="type" value="{{.Type.Name}}">
+  {{/* First submit button = what Enter in a text field triggers. */}}
+  <button type="submit" name="action" value="preview" class="sr-only" tabindex="-1" aria-hidden="true">Update preview</button>
+
+  <div class="steps">
+    <section class="step" aria-labelledby="step1">
+      <h2 id="step1"><span class="num">1</span> Content</h2>
+      <div class="type-tabs" role="group" aria-label="Content type">
+        {{range .Types}}<button type="submit" name="action" value="type:{{.Name}}" class="tab"{{if eq .Name $.Type.Name}} aria-pressed="true"{{else}} aria-pressed="false"{{end}}>{{.Title}}</button>{{end}}
+      </div>
+      <div class="fields">
+      {{range .Type.Fields}}{{$v := index $.Values .Name}}
+        {{if eq .InputKind "checkbox"}}
+        <div class="field field-check">
+          <label><input type="checkbox" name="f.{{.Name}}" value="true"{{if eq $v "true"}} checked{{end}}> {{.Label}}</label>
+        </div>
+        {{else}}
+        <div class="field{{if eq .InputKind "textarea"}} field-wide{{end}}">
+          <label for="f-{{.Name}}">{{.Label}}{{if .Required}} <span class="req" aria-hidden="true">*</span>{{end}}</label>
+          {{if eq .InputKind "textarea"}}
+          <textarea id="f-{{.Name}}" name="f.{{.Name}}" rows="3" placeholder="{{.Placeholder}}">{{$v}}</textarea>
+          {{else if eq .InputKind "select"}}
+          <select id="f-{{.Name}}" name="f.{{.Name}}">
+            <option value="">Automatic</option>
+            {{range .Options}}<option value="{{.}}"{{if eq . $v}} selected{{end}}>{{.}}</option>{{end}}
+          </select>
+          {{else}}
+          <input id="f-{{.Name}}" name="f.{{.Name}}" value="{{$v}}" placeholder="{{.Placeholder}}"
+            {{if eq .InputKind "email"}}type="email" autocomplete="off"{{else if eq .InputKind "tel"}}type="tel"{{else if eq .InputKind "url"}}type="text" inputmode="url" spellcheck="false"{{else}}type="text"{{end}}>
+          {{end}}
+          {{with hint .}}<small class="hint">{{.}}</small>{{end}}
+        </div>
+        {{end}}
+      {{end}}
+      </div>
+    </section>
+
+    <section class="step" aria-labelledby="step2">
+      <h2 id="step2"><span class="num">2</span> Design</h2>
+      <div class="fields">
+        <div class="field field-wide">
+          <label for="preset">Preset</label>
+          <div class="inline">
+            <select id="preset" name="preset" data-autosubmit="apply-preset">
+              <option value="">Choose a preset…</option>
+              {{range .Presets}}<option value="{{.ID}}"{{if eq .ID $.Preset}} selected{{end}}>{{.Name}}{{if not .Builtin}} (yours){{end}}</option>{{end}}
+            </select>
+            <button type="submit" name="action" value="apply-preset" class="btn js-hide" id="apply-preset">Apply</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="fg">Foreground</label>
+          <input id="fg" name="fg" type="color" value="{{.FgHex}}">
+        </div>
+        <div class="field">
+          <label for="bg">Background</label>
+          <input id="bg" name="bg" type="color" value="{{.BgHex}}">
+          <label class="check"><input type="checkbox" name="bg_transparent" value="1"{{if .Transparent}} checked{{end}}> Transparent</label>
+        </div>
+        <div class="field">
+          <label for="ecc">Error correction</label>
+          <select id="ecc" name="ecc">
+            <option value="L"{{if eq .Design.ECC "L"}} selected{{end}}>L: 7%, smallest code</option>
+            <option value="M"{{if eq .Design.ECC "M"}} selected{{end}}>M: 15%, recommended</option>
+            <option value="Q"{{if eq .Design.ECC "Q"}} selected{{end}}>Q: 25%</option>
+            <option value="H"{{if eq .Design.ECC "H"}} selected{{end}}>H: 30%, most robust</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="quiet">Quiet zone <output for="quiet" id="quiet-out">{{.Design.QuietZone}}</output></label>
+          <input id="quiet" name="quiet" type="range" min="0" max="10" value="{{.Design.QuietZone}}">
+        </div>
+        <div class="field">
+          <label for="version">QR version</label>
+          <select id="version" name="version">
+            <option value="0">Automatic</option>
+            {{range seq 1 40}}<option value="{{.}}"{{if eq . $.Design.Version}} selected{{end}}>{{.}}</option>{{end}}
+          </select>
+        </div>
+        <div class="field field-wide">
+          <label for="preset_name">Save this design as a preset</label>
+          <div class="inline">
+            <input id="preset_name" name="preset_name" type="text" placeholder="Preset name" data-nopreview>
+            <button type="submit" name="action" value="save-preset" class="btn">Save preset</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="step" aria-labelledby="step3">
+      <h2 id="step3"><span class="num">3</span> Download</h2>
+      <div class="fields">
+        <div class="field">
+          <label for="format">Format</label>
+          <select id="format" name="format">
+            <option value="png"{{if eq .Format "png"}} selected{{end}}>PNG</option>
+            <option value="svg"{{if eq .Format "svg"}} selected{{end}}>SVG (vector)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="size">Size (px)</label>
+          <input id="size" name="size" type="number" min="128" max="4096" step="1" value="{{.Size}}">
+        </div>
+        <div class="field">
+          <label for="name">Name</label>
+          <input id="name" name="name" type="text" value="{{.Name}}" placeholder="Named automatically" data-nopreview>
+        </div>
+        <div class="field">
+          <label for="tags">Tags</label>
+          <input id="tags" name="tags" type="text" value="{{.Tags}}" placeholder="home, print" data-nopreview>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="submit" name="action" value="download" class="btn btn-primary">Download</button>
+        <button type="button" class="btn js-only" id="copy-png">Copy image</button>
+        {{if .CodeID}}
+        <button type="submit" name="action" value="save" class="btn">Save changes</button>
+        <button type="submit" name="action" value="save-new" class="btn">Save as new</button>
+        {{else}}
+        <button type="submit" name="action" value="save" class="btn">Save to library</button>
+        {{end}}
+      </div>
+    </section>
+  </div>
+
+  <aside class="preview-pane" aria-label="Preview">
+    <div id="preview" aria-live="polite">{{template "preview" .Preview}}</div>
+    <button type="submit" name="action" value="preview" class="btn js-hide">Update preview</button>
+  </aside>
+</form>
+{{template "foot" .}}{{end}}

@@ -46,9 +46,10 @@ Canute's QR Generator is a self-hosted, single-binary generator for **static** Q
 │  internal/matrix      QR / 2D barcode matrix generation (interface)          │
 │  internal/render      vector scene → SVG / PNG / JPEG / PDF / EPS  (§5, §6)  │
 │  internal/verify      decode-after-render scannability check                 │
+│  internal/generate    pipeline shared by CLI, UI and API                     │
 │  internal/store       SQLite persistence (saved codes, presets, assets)      │
 │  internal/api         JSON REST API  (/api/v1)                               │
-│  internal/web         server-rendered UI: html/template + htmx (go:embed)    │
+│  internal/web         server-rendered UI: html/template + small JS (embed)   │
 │  internal/i18n        message catalogs                                       │
 │                                                                              │
 └───────────────────────────────┬──────────────────────────────────────────────┘
@@ -64,7 +65,7 @@ Canute's QR Generator is a self-hosted, single-binary generator for **static** Q
 | Concern | Choice | Reason |
 |---|---|---|
 | HTTP | `net/http` (Go 1.22+ routing patterns) | stdlib, no framework needed |
-| UI | Server-rendered `html/template`, htmx, and minimal vanilla JS, all embedded with `go:embed` | No JS toolchain, works offline |
+| UI | Server-rendered `html/template` and one small vanilla JS file, all embedded with `go:embed` | No JS toolchain or third-party scripts, works offline |
 | QR matrix | `github.com/skip2/go-qrcode` (module access via `Bitmap()`) behind the `matrix` interface | Fast start, swappable later |
 | 2D barcodes | `github.com/boombuler/barcode` | Data Matrix, PDF417, Aztec, Code128, and EAN/UPC |
 | Database | `modernc.org/sqlite` | Pure Go and CGO-free, so it cross-compiles to Windows |
@@ -173,7 +174,7 @@ After every render, `internal/verify` decodes the PNG. If decoding fails, or if 
 ## 9. Interfaces
 
 ### 9.1 Web UI (served at `http://127.0.0.1:8080`)
-The UI is server-rendered with htmx partial updates and uses a 3-step flow that mirrors qr.io:
+The UI is server-rendered. Every page is a plain HTML form that works without JavaScript; a small script adds live preview, auto-applied presets, delete confirmations and copy-to-clipboard. It uses a 3-step flow that mirrors qr.io:
 1. **Content:** pick a type and fill the form.
 2. **Design:** frame, shape, eyes, logo, and colors, with a live preview pinned on the right.
 3. **Download:** choose the format and size, then download and optionally save to the library.
@@ -241,7 +242,7 @@ English ships first. Catalogs for Spanish, Portuguese, Italian, French, and Germ
 | Milestone | Scope |
 |---|---|
 | **M1: Core engine** | All QR content types in §4 (types 1–9); basic style (colors, ECC, quiet zone); PNG and SVG export; CLI `generate`; verify step |
-| **M2: Web UI** | Server-rendered 3-step UI with htmx, live preview, SQLite library, presets |
+| **M2: Web UI** | Server-rendered 3-step UI, live preview, SQLite library, presets |
 | **M3: Full design** | Module and eye shapes, gradients, logos with background knockout, icon library, frames; PDF, EPS, and JPEG export |
 | **M4: Bulk, API, polish** | CSV batch, REST API and OpenAPI, 2D barcodes, backup and restore, i18n, release packaging |
 | **Stretch** | Location, crypto, and PayPal types; per-eye styling; custom fonts |
@@ -250,7 +251,7 @@ English ships first. Catalogs for Spanish, Portuguese, Italian, French, and Germ
 
 | # | Decision |
 |---|---|
-| D1 | The UI is server-rendered (`html/template` + htmx). There is no SPA and no JS build toolchain. |
+| D1 | The UI is server-rendered (`html/template`) with progressive enhancement from one small vanilla JS file. There is no SPA, no htmx, and no JS build toolchain. |
 | D2 | Start with `skip2/go-qrcode` behind the `matrix` interface, so an in-house encoder can replace it later. |
 | D3 | There is no routing logic (A/B or time-based). This follows from D5. |
 | D4 | The UI is the user's normal browser on localhost. There is no native desktop wrapper. |
