@@ -20,6 +20,8 @@ type Scene struct {
 	QuietZone      float64     // in modules
 	Foreground     Paint       // data module paint
 	CodeBackground color.NRGBA // what the modules sit on
+	// Symbology is "" for QR codes, else a barcode.Symbology.
+	Symbology string
 }
 
 // Item is a filled path, or an image clipped to a path.

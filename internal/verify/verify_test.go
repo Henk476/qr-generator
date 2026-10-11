@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Henk476/qr-generator/internal/barcode"
 	"github.com/Henk476/qr-generator/internal/encode"
 	"github.com/Henk476/qr-generator/internal/matrix"
 	"github.com/Henk476/qr-generator/internal/render"
@@ -27,6 +28,7 @@ var samples = map[string]map[string]string{
 		"street": "1 Shore Rd", "city": "Bosham", "country": "England", "note": "Prefers dry feet"},
 	"event": {"title": "Tide demonstration", "start": "2026-10-11 10:00", "tz": "Europe/London",
 		"location": "Bosham beach", "description": "Bring towels"},
+	"barcode": {"symbology": "datamatrix", "value": "CANUTE-1016"},
 }
 
 func render1(t *testing.T, payload string, opts matrix.Options, s render.Style) *render.Scene {
@@ -188,5 +190,51 @@ func TestGradientContrastUsesWeakestEnd(t *testing.T) {
 	r := Check("hello", render1(t, "hello", matrix.Options{Level: matrix.M}, s), 1024)
 	if r.Contrast > 2 || !strings.Contains(strings.Join(r.Warnings, "\n"), "low contrast") {
 		t.Errorf("contrast %.1f, warnings %v", r.Contrast, r.Warnings)
+	}
+}
+
+// TestBarcodeRoundTrip decodes every barcode symbology that has an
+// offline reader, in plain and styled colors.
+func TestBarcodeRoundTrip(t *testing.T) {
+	values := map[barcode.Symbology]string{
+		barcode.DataMatrix: "Canute bade the tide turn back",
+		barcode.PDF417:     "BOARDING PASS CNT 1016",
+		barcode.Aztec:      "TICKET 42 / BOSHAM",
+		barcode.Code128:    "SHIP-1016-A",
+		barcode.EAN13:      "590123412345",
+		barcode.UPCA:       "03600029145",
+	}
+	styles := map[string]render.Style{
+		"plain": render.DefaultStyle(),
+		"gradient": {Foreground: color.NRGBA{0x1b, 0x2a, 0x49, 255}, Background: color.NRGBA{0xfa, 0xf3, 0xe0, 255}, QuietZone: 4,
+			Gradient: render.Gradient{Kind: render.LinearGradient, Color2: color.NRGBA{0x0b, 0x5d, 0x7a, 255}}},
+	}
+	for _, info := range barcode.Symbologies() {
+		for sname, s := range styles {
+			t.Run(string(info.Symbology)+"/"+sname, func(t *testing.T) {
+				payload, err := barcode.Normalize(info.Symbology, values[info.Symbology])
+				if err != nil {
+					t.Fatal(err)
+				}
+				g, err := barcode.Encode(info.Symbology, payload)
+				if err != nil {
+					t.Fatal(err)
+				}
+				sc, err := render.BuildBarcodeScene(g, payload, s)
+				if err != nil {
+					t.Fatal(err)
+				}
+				r := Check(payload, sc, 1024)
+				if info.Symbology == barcode.PDF417 {
+					if len(r.Notes) == 0 || r.Decoded {
+						t.Errorf("PDF417 should be reported as not checked: %+v", r)
+					}
+					return
+				}
+				if !r.Match {
+					t.Fatalf("decode failed: %+v", r)
+				}
+			})
+		}
 	}
 }

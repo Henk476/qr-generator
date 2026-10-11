@@ -450,3 +450,17 @@ func TestDownloadFormats(t *testing.T) {
 	wantStatus(t, rec, http.StatusUnprocessableEntity)
 	wantBody(t, rec, "does not fit")
 }
+
+func TestBarcodeEditor(t *testing.T) {
+	a := newTestApp(t)
+	rec := a.get("/new?type=barcode")
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, "Barcode format", "shapes, logos and frames are QR features")
+	if strings.Contains(rec.Body.String(), `name="module"`) {
+		t.Error("QR shape pickers shown for a barcode")
+	}
+	rec = a.post("/preview", editorForm("preview", "type", "barcode", "f.symbology", "upca", "f.value", "03600029145"))
+	wantBody(t, rec, "<svg", "UPC-A, 95 modules wide", "Scan check passed")
+	rec = a.post("/preview", editorForm("preview", "type", "barcode", "f.symbology", "pdf417", "f.value", "HELLO"))
+	wantBody(t, rec, "not decode-checked")
+}

@@ -233,7 +233,7 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		return fail(err)
 	}
 	if *out != "-" {
-		fmt.Fprintf(stderr, "wrote %s (%s, QR version %d, ECC %s, %d bytes encoded)\n", *out, format, code.Matrix.Version, code.Matrix.Level, len(code.Payload))
+		fmt.Fprintf(stderr, "wrote %s (%s, %s, %d bytes encoded)\n", *out, format, code.Summary(), len(code.Payload))
 	}
 	return 0
 }

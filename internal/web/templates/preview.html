@@ -5,5 +5,6 @@
 {{if .Error}}<p class="msg msg-error">{{.Error}}</p>{{end}}
 {{range .Warnings}}<p class="msg msg-warn">{{.}}</p>{{end}}
 {{if .OK}}<p class="msg msg-ok">Scan check passed.</p>{{end}}
-{{if .SVG}}<p class="meta">QR version {{.Version}} · {{.Modules}}×{{.Modules}} modules · ECC {{.ECC}} · {{.Bytes}} bytes</p>{{end}}
+{{range .Notes}}<p class="msg">{{.}}</p>{{end}}
+{{if .SVG}}<p class="meta">{{.Summary}} · {{.Bytes}} bytes</p>{{end}}
 {{end}}

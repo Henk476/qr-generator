@@ -114,9 +114,8 @@ type preview struct {
 	Error       string
 	Warnings    []string
 	OK          bool
-	Version     int
-	Modules     int
-	ECC         string
+	Summary     string
+	Notes       []string
 	Bytes       int
 	Transparent bool
 }
@@ -292,7 +291,7 @@ func (s *Server) makePreview(r *http.Request, d *editorData) preview {
 	p.SVG = template.HTML(buf.String())
 	rep := code.Verify(d.Export.checkPx())
 	p.Warnings, p.OK = rep.Warnings, rep.OK()
-	p.Version, p.Modules, p.ECC, p.Bytes = code.Matrix.Version, code.Matrix.Size, code.Matrix.Level.String(), len(code.Payload)
+	p.Summary, p.Bytes, p.Notes = code.Summary(), len(code.Payload), rep.Notes
 	return p
 }
 

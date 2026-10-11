@@ -176,3 +176,25 @@ func TestStyles(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerateBarcodes(t *testing.T) {
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--symbology", "ean13", "--data", "590123412345"}, "EAN-13, 95 modules wide"},
+		{[]string{"--symbology", "datamatrix", "--value", "HELLO"}, "Data Matrix"},
+		{[]string{"--symbology", "code128", "--data", "SHIP-1"}, "Code 128"},
+	} {
+		args := append([]string{"generate", "--type", "barcode", "--strict", "-o", filepath.Join(dir, "b.png")}, tc.args...)
+		code, _, stderr := runCLI(args...)
+		if code != 0 || !strings.Contains(stderr, tc.want) {
+			t.Errorf("%v: exit %d %s", tc.args, code, stderr)
+		}
+	}
+	code, _, stderr := runCLI("generate", "--type", "barcode", "--symbology", "ean13", "--data", "5901234123458", "-o", filepath.Join(dir, "b.png"))
+	if code != 1 || !strings.Contains(stderr, "check digit") {
+		t.Errorf("bad check digit: exit %d %s", code, stderr)
+	}
+}

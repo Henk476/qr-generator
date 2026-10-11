@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/Henk476/qr-generator/internal/barcode"
 	"github.com/Henk476/qr-generator/internal/encode"
 	"github.com/Henk476/qr-generator/internal/matrix"
 	"github.com/Henk476/qr-generator/internal/render"
@@ -174,8 +175,21 @@ type Request struct {
 // Code is a prepared code, ready to export in any format.
 type Code struct {
 	Payload string
-	Matrix  *matrix.Matrix
+	Matrix  *matrix.Matrix // nil for non-QR barcodes
+	Barcode *barcode.Grid  // nil for QR codes
 	Scene   *render.Scene
+}
+
+// Summary describes the symbol, e.g. "QR version 3, 29x29 modules, ECC M".
+func (c *Code) Summary() string {
+	if c.Barcode != nil {
+		info, _ := barcode.Lookup(c.Barcode.Symbology)
+		if c.Barcode.Linear {
+			return fmt.Sprintf("%s, %d modules wide", info.Label, c.Barcode.W)
+		}
+		return fmt.Sprintf("%s, %dx%d modules", info.Label, c.Barcode.W, c.Barcode.H)
+	}
+	return fmt.Sprintf("QR version %d, %dx%d modules, ECC %s", c.Matrix.Version, c.Matrix.Size, c.Matrix.Size, c.Matrix.Level)
 }
 
 // Prepare builds the payload and lays out the code.
@@ -187,6 +201,17 @@ func Prepare(req Request) (*Code, error) {
 	payload, err := encode.Build(req.Type, req.Fields)
 	if err != nil {
 		return nil, err
+	}
+	if req.Type == "barcode" {
+		g, err := barcode.Encode(barcode.Symbology(req.Fields["symbology"]), payload)
+		if err != nil {
+			return nil, err
+		}
+		sc, err := render.BuildBarcodeScene(g, payload, style)
+		if err != nil {
+			return nil, err
+		}
+		return &Code{Payload: payload, Barcode: g, Scene: sc}, nil
 	}
 	m, err := matrix.Build(payload, opts)
 	if err != nil {

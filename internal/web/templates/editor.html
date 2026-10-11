@@ -24,7 +24,7 @@
           <textarea id="f-{{.Name}}" name="f.{{.Name}}" rows="3" placeholder="{{.Placeholder}}">{{$v}}</textarea>
           {{else if eq .InputKind "select"}}
           <select id="f-{{.Name}}" name="f.{{.Name}}">
-            <option value="">Automatic</option>
+            {{if not .Required}}<option value="">Automatic</option>{{end}}
             {{range .Options}}<option value="{{.}}"{{if eq . $v}} selected{{end}}>{{.}}</option>{{end}}
           </select>
           {{else}}
@@ -83,6 +83,9 @@
         </div>
       </fieldset>
 
+      {{if eq .Type.Name "barcode"}}
+      <p class="hint">Barcodes use colors and the quiet zone; shapes, logos and frames are QR features.</p>
+      {{else}}
       <fieldset class="group">
         <legend>Module shape</legend>
         <div class="swatches">
@@ -168,6 +171,7 @@
           </div>
         </div>
       </fieldset>
+      {{end}}
 
       <details class="group">
         <summary>Advanced</summary>

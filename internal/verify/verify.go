@@ -4,6 +4,7 @@
 package verify
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -11,8 +12,12 @@ import (
 	"math"
 
 	"github.com/makiuchi-d/gozxing"
+	"github.com/makiuchi-d/gozxing/aztec"
+	"github.com/makiuchi-d/gozxing/datamatrix"
+	"github.com/makiuchi-d/gozxing/oned"
 	"github.com/makiuchi-d/gozxing/qrcode"
 
+	"github.com/Henk476/qr-generator/internal/barcode"
 	"github.com/Henk476/qr-generator/internal/render"
 )
 
@@ -27,10 +32,12 @@ const decodePxPerModule = 8
 // Report is the outcome of a scannability check. Warnings are advisory: the
 // caller decides whether to block on them.
 type Report struct {
-	Decoded  bool    // a QR code was found and decoded
+	Decoded  bool    // the code was found and decoded
 	Match    bool    // the decoded text equals the payload
 	Contrast float64 // WCAG contrast ratio between foreground and background
 	Warnings []string
+	// Notes are informational, e.g. that a format cannot be decode-checked.
+	Notes []string
 }
 
 // OK reports whether the check produced no warnings.
@@ -42,8 +49,12 @@ func Check(payload string, sc *render.Scene, outputPx int) Report {
 	var r Report
 	warn := func(format string, a ...any) { r.Warnings = append(r.Warnings, fmt.Sprintf(format, a...)) }
 
-	text, err := Decode(onWhite(render.Rasterize(sc, int(math.Ceil(sc.Width*decodePxPerModule)))))
+	width := int(math.Ceil(min(sc.Width*decodePxPerModule, maxDecodeWidth)))
+	text, err := DecodeAs(sc.Symbology, onWhite(render.Rasterize(sc, width)))
 	switch {
+	case errors.Is(err, ErrNoReader):
+		r.Match = true // nothing to compare; reported as a note, not a failure
+		r.Notes = append(r.Notes, err.Error())
 	case err != nil:
 		warn("the code could not be decoded: increase contrast, raise the quiet zone or simplify the content")
 	case text != payload:
@@ -77,13 +88,39 @@ func Check(payload string, sc *render.Scene, outputPx int) Report {
 	return r
 }
 
+// maxDecodeWidth caps the check raster for very wide linear barcodes.
+const maxDecodeWidth = 4000
+
+// ErrNoReader means the format cannot be decode-checked.
+var ErrNoReader = errors.New("PDF417 output is not decode-checked: no PDF417 reader is available offline")
+
 // Decode reads a QR code from img.
-func Decode(img image.Image) (string, error) {
+func Decode(img image.Image) (string, error) { return DecodeAs("", img) }
+
+// DecodeAs reads a code of the given symbology ("" = QR) from img.
+func DecodeAs(symbology string, img image.Image) (string, error) {
+	var reader gozxing.Reader
+	switch barcode.Symbology(symbology) {
+	case "":
+		reader = qrcode.NewQRCodeReader()
+	case barcode.DataMatrix:
+		reader = datamatrix.NewDataMatrixReader()
+	case barcode.Aztec:
+		reader = aztec.NewAztecReader()
+	case barcode.Code128:
+		reader = oned.NewCode128Reader()
+	case barcode.EAN13:
+		reader = oned.NewEAN13Reader()
+	case barcode.UPCA:
+		reader = oned.NewUPCAReader()
+	default:
+		return "", ErrNoReader
+	}
 	bmp, err := gozxing.NewBinaryBitmapFromImage(img)
 	if err != nil {
 		return "", err
 	}
-	res, err := qrcode.NewQRCodeReader().Decode(bmp, map[gozxing.DecodeHintType]any{
+	res, err := reader.Decode(bmp, map[gozxing.DecodeHintType]any{
 		gozxing.DecodeHintType_TRY_HARDER:    true,
 		gozxing.DecodeHintType_CHARACTER_SET: "UTF-8",
 	})

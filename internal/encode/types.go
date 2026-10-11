@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata" // IANA zones for the event "tz" field, even on Windows
+
+	"github.com/Henk476/qr-generator/internal/barcode"
 )
 
 func init() {
@@ -111,6 +113,23 @@ func init() {
 			{Name: "description", Label: "Description", Kind: KindTextarea, Usage: "description"},
 		},
 		build: buildEvent,
+	})
+	syms := barcode.Symbologies()
+	symNames := make([]string, len(syms))
+	for i, s := range syms {
+		symNames[i] = string(s.Symbology)
+	}
+	register(Type{
+		Name: "barcode", Title: "Barcode", Primary: "value",
+		Fields: []Field{
+			{Name: "symbology", Label: "Barcode format", Kind: KindSelect, Options: symNames, Required: true,
+				Usage: "datamatrix, pdf417, aztec, code128, ean13 or upca"},
+			{Name: "value", Label: "Value", Required: true,
+				Usage: "the value to encode; EAN-13 takes 12 digits and UPC-A 11, and the check digit is added"},
+		},
+		build: func(f fields) (string, error) {
+			return barcode.Normalize(barcode.Symbology(f["symbology"]), f["value"])
+		},
 	})
 }
 

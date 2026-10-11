@@ -98,7 +98,7 @@ func TestBuildErrors(t *testing.T) {
 }
 
 func TestTypesRegistered(t *testing.T) {
-	want := []string{"url", "text", "email", "call", "sms", "whatsapp", "wifi", "vcard", "event"}
+	want := []string{"url", "text", "email", "call", "sms", "whatsapp", "wifi", "vcard", "event", "barcode"}
 	ts := Types()
 	if len(ts) != len(want) {
 		t.Fatalf("got %d types, want %d", len(ts), len(want))
