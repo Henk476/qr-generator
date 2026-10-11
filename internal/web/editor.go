@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/Henk476/qr-generator/internal/encode"
 	"github.com/Henk476/qr-generator/internal/generate"
+	"github.com/Henk476/qr-generator/internal/logo"
 	"github.com/Henk476/qr-generator/internal/render"
 	"github.com/Henk476/qr-generator/internal/store"
 )
@@ -23,6 +25,7 @@ const previewPx = 512
 // editorData backs templates/editor.html.
 type editorData struct {
 	page
+	Opts    *designOptions
 	Action  string // form action URL
 	CodeID  string // empty for a new, unsaved code
 	Types   []encode.Type
@@ -33,17 +36,69 @@ type editorData struct {
 	Design  generate.Design
 	Presets []store.Preset
 	Preset  string
-	Format  string
-	Size    int
+	Export  exportForm
 	Preview preview
 }
 
-// FgHex and BgHex feed <input type=color>, which only accepts #rrggbb.
-func (d editorData) FgHex() string { return colorInput(d.Design.Foreground, "#000000") }
-func (d editorData) BgHex() string { return colorInput(d.Design.Background, "#ffffff") }
+// exportForm is the Download step's settings.
+type exportForm struct {
+	Format  string
+	Size    int
+	Quality int
+	Page    string
+	PrintMM float64
+}
+
+func (e exportForm) options() (render.Options, error) {
+	f, err := render.ParseFormat(e.Format)
+	return render.Options{Format: f, Size: e.Size, Quality: e.Quality, Page: e.Page, PrintMM: e.PrintMM}, err
+}
+
+// checkPx is the output size the scan check should assume.
+func (e exportForm) checkPx() int {
+	if f, err := render.ParseFormat(e.Format); err == nil && (f == render.PDF || f == render.EPS) {
+		return render.MaxSize // printed: resolution is not the bottleneck
+	}
+	if e.Size < render.MinSize || e.Size > render.MaxSize {
+		return previewPx
+	}
+	return e.Size
+}
+
+// Values for <input type=color>, which only accepts #rrggbb.
+func (d editorData) FgHex() string  { return colorInput(d.Design.Foreground, "#000000") }
+func (d editorData) BgHex() string  { return colorInput(d.Design.Background, "#ffffff") }
+func (d editorData) Fg2Hex() string { return colorInput(d.Design.Foreground2, "#0b5d7a") }
+func (d editorData) EyeOuterHex() string {
+	return colorInput(d.Design.EyeOuterColor, d.FgHex())
+}
+func (d editorData) EyeInnerHex() string {
+	return colorInput(d.Design.EyeInnerColor, d.FgHex())
+}
+func (d editorData) FrameColorHex() string { return colorInput(d.Design.FrameColor, d.FgHex()) }
+func (d editorData) FrameTextHex() string  { return colorInput(d.Design.FrameTextColor, "#ffffff") }
 
 // Transparent reports whether the background is transparent.
 func (d editorData) Transparent() bool { return d.Design.Background == "transparent" }
+
+// LogoSize is the logo size slider value.
+func (d editorData) LogoSize() int {
+	if d.Design.LogoSize == 0 {
+		return generate.DefaultLogoSize
+	}
+	return d.Design.LogoSize
+}
+
+// FrameText is the frame phrase shown in the form.
+func (d editorData) FrameText() string {
+	if d.Design.FrameText == "" {
+		return generate.DefaultFrameText
+	}
+	return d.Design.FrameText
+}
+
+// UploadedLogo reports whether the logo is an uploaded image.
+func (d editorData) UploadedLogo() bool { return strings.HasPrefix(d.Design.Logo, "asset:") }
 
 func colorInput(c, fallback string) string {
 	if len(c) >= 7 && c[0] == '#' {
@@ -66,7 +121,7 @@ type preview struct {
 	Transparent bool
 }
 
-func (s *Server) defaults(r *http.Request) (generate.Design, string, int) {
+func (s *Server) defaults(r *http.Request) (generate.Design, exportForm) {
 	ctx := r.Context()
 	d := generate.DefaultDesign()
 	d.ECC, _ = s.store.GetSetting(ctx, settingECC, d.ECC)
@@ -76,7 +131,7 @@ func (s *Server) defaults(r *http.Request) (generate.Design, string, int) {
 	if err != nil {
 		size = 1024
 	}
-	return d, format, size
+	return d, exportForm{Format: format, Size: size, Quality: 90, Page: "fit", PrintMM: 50}
 }
 
 func (s *Server) newEditor(r *http.Request, codeID string) (*editorData, error) {
@@ -84,7 +139,7 @@ func (s *Server) newEditor(r *http.Request, codeID string) (*editorData, error) 
 	if err != nil {
 		return nil, err
 	}
-	design, format, size := s.defaults(r)
+	design, export := s.defaults(r)
 	title, nav, action := "New code", "new", "/new"
 	if codeID != "" {
 		title, nav, action = "Edit code", "library", "/codes/"+codeID
@@ -92,6 +147,7 @@ func (s *Server) newEditor(r *http.Request, codeID string) (*editorData, error) 
 	t, _ := encode.Lookup("url")
 	return &editorData{
 		page:    s.newPage(r, title, nav),
+		Opts:    s.options,
 		Action:  action,
 		CodeID:  codeID,
 		Types:   encode.Types(),
@@ -99,8 +155,7 @@ func (s *Server) newEditor(r *http.Request, codeID string) (*editorData, error) 
 		Values:  map[string]string{},
 		Design:  design,
 		Presets: presets,
-		Format:  format,
-		Size:    size,
+		Export:  export,
 	}, nil
 }
 
@@ -118,7 +173,7 @@ func (s *Server) handleNew(w http.ResponseWriter, r *http.Request) {
 			d.Design, d.Preset = p.Design, p.ID
 		}
 	}
-	d.Preview = makePreview(d)
+	d.Preview = s.makePreview(r, d)
 	s.render(w, http.StatusOK, "editor", d)
 }
 
@@ -143,13 +198,17 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Has("saved") {
 		d.Flash = "Saved to your library."
 	}
-	d.Preview = makePreview(d)
+	d.Preview = s.makePreview(r, d)
 	s.render(w, http.StatusOK, "editor", d)
 }
 
 // readForm fills d from the posted editor form.
 func readForm(r *http.Request, d *editorData) {
-	if t, ok := encode.Lookup(r.PostFormValue("type")); ok {
+	v := func(k string) string { return strings.TrimSpace(r.PostFormValue(k)) }
+	on := func(k string) bool { return r.PostFormValue(k) != "" }
+	num := func(k string) int { n, _ := strconv.Atoi(v(k)); return n }
+
+	if t, ok := encode.Lookup(v("type")); ok {
 		d.Type = t
 	}
 	for k, vs := range r.PostForm {
@@ -157,41 +216,62 @@ func readForm(r *http.Request, d *editorData) {
 			d.Values[name] = vs[0]
 		}
 	}
-	d.Name = strings.TrimSpace(r.PostFormValue("name"))
-	d.Tags = r.PostFormValue("tags")
-	d.Preset = r.PostFormValue("preset")
+	d.Name, d.Tags, d.Preset = v("name"), r.PostFormValue("tags"), v("preset")
 
-	d.Design.ECC = r.PostFormValue("ecc")
-	d.Design.Version, _ = strconv.Atoi(r.PostFormValue("version"))
-	d.Design.QuietZone, _ = strconv.Atoi(r.PostFormValue("quiet"))
-	d.Design.Foreground = r.PostFormValue("fg")
-	d.Design.Background = r.PostFormValue("bg")
-	if r.PostFormValue("bg_transparent") != "" {
-		d.Design.Background = "transparent"
+	g := &d.Design
+	g.ECC, g.Version, g.QuietZone = v("ecc"), num("version"), num("quiet")
+	g.Foreground, g.Background = v("fg"), v("bg")
+	if on("bg_transparent") {
+		g.Background = "transparent"
 	}
-	if f := r.PostFormValue("format"); f != "" {
-		d.Format = f
+	g.Gradient, g.Foreground2, g.GradientAngle = v("gradient"), v("fg2"), num("gradient_angle")
+	g.Module, g.EyeOuter, g.EyeInner = v("module"), v("eye_outer"), v("eye_inner")
+	g.EyeOuterColor, g.EyeInnerColor = "", ""
+	if on("eye_outer_custom") {
+		g.EyeOuterColor = v("eye_outer_color")
 	}
-	if n, err := strconv.Atoi(r.PostFormValue("size")); err == nil {
-		d.Size = n
+	if on("eye_inner_custom") {
+		g.EyeInnerColor = v("eye_inner_color")
+	}
+	g.Logo, g.LogoSize = v("logo"), num("logo_size")
+	g.LogoCircle, g.LogoKeepModules = on("logo_circle"), on("logo_keep")
+	g.Frame, g.FrameText, g.FrameFont = v("frame"), v("frame_text"), v("frame_font")
+	g.FrameColor, g.FrameTextColor = v("frame_color"), v("frame_text_color")
+	*g = g.Normalize()
+
+	e := &d.Export
+	if f := v("format"); f != "" {
+		e.Format = f
+	}
+	if n := num("size"); n != 0 {
+		e.Size = n
+	}
+	if n := num("quality"); n != 0 {
+		e.Quality = n
+	}
+	if p := v("page"); p != "" {
+		e.Page = p
+	}
+	if mm, err := strconv.ParseFloat(v("print_mm"), 64); err == nil {
+		e.PrintMM = mm
 	}
 }
 
 // request turns the editor state into a generate request. Only the current
 // type's non-empty fields are sent, so values left over from switching
 // types are ignored.
-func (d *editorData) request() generate.Request {
+func (s *Server) request(r *http.Request, d *editorData) generate.Request {
 	fields := map[string]string{}
 	for _, f := range d.Type.Fields {
 		if v := strings.TrimSpace(d.Values[f.Name]); v != "" {
 			fields[f.Name] = v
 		}
 	}
-	return generate.Request{Type: d.Type.Name, Fields: fields, Design: d.Design}
+	return generate.Request{Type: d.Type.Name, Fields: fields, Design: d.Design, Assets: s.assetLoader(r.Context())}
 }
 
-func makePreview(d *editorData) preview {
-	req := d.request()
+func (s *Server) makePreview(r *http.Request, d *editorData) preview {
+	req := s.request(r, d)
 	p := preview{Transparent: d.Transparent()}
 	if len(req.Fields) == 0 {
 		p.Empty = true
@@ -207,12 +287,10 @@ func makePreview(d *editorData) preview {
 		p.Error = err.Error()
 		return p
 	}
-	p.SVG = template.HTML(buf.String()) // generated by our renderer, not user markup
-	size := d.Size
-	if size < render.MinSize || size > render.MaxSize {
-		size = previewPx
-	}
-	rep := code.Verify(size)
+	// Generated by our renderer from validated values; logos are embedded
+	// as re-encoded PNG data, never as user markup.
+	p.SVG = template.HTML(buf.String())
+	rep := code.Verify(d.Export.checkPx())
 	p.Warnings, p.OK = rep.Warnings, rep.OK()
 	p.Version, p.Modules, p.ECC, p.Bytes = code.Matrix.Version, code.Matrix.Size, code.Matrix.Level.String(), len(code.Payload)
 	return p
@@ -226,7 +304,7 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 	}
 	readForm(r, d)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.pages["preview"].ExecuteTemplate(w, "preview", makePreview(d)); err != nil {
+	if err := s.pages["preview"].ExecuteTemplate(w, "preview", s.makePreview(r, d)); err != nil {
 		s.serverError(w, err)
 	}
 }
@@ -250,6 +328,7 @@ func (s *Server) handleEditorPost(w http.ResponseWriter, r *http.Request) {
 	}
 	readForm(r, d)
 	status := http.StatusOK
+	invalid := func(msg string) { d.Error, status = msg, http.StatusUnprocessableEntity }
 
 	action := r.PostFormValue("action")
 	switch {
@@ -263,13 +342,21 @@ func (s *Server) handleEditorPost(w http.ResponseWriter, r *http.Request) {
 			d.Design = p.Design
 		}
 
+	case action == "upload-logo":
+		id, err := s.uploadLogo(r)
+		if err != nil {
+			invalid(err.Error())
+			break
+		}
+		d.Design.Logo, d.Flash = "asset:"+id, "Logo uploaded."
+
 	case action == "save-preset":
 		name := strings.TrimSpace(r.PostFormValue("preset_name"))
 		switch err := d.Design.Validate(); {
 		case name == "":
-			d.Error, status = "Give the preset a name.", http.StatusUnprocessableEntity
+			invalid("Give the preset a name.")
 		case err != nil:
-			d.Error, status = "Cannot save preset: "+err.Error(), http.StatusUnprocessableEntity
+			invalid("Cannot save preset: " + err.Error())
 		default:
 			p := &store.Preset{Name: name, Design: d.Design}
 			if err := s.store.CreatePreset(ctx, p); err != nil {
@@ -284,22 +371,23 @@ func (s *Server) handleEditorPost(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case action == "download":
-		if err := s.download(w, d); err != nil {
-			d.Error, status = err.Error(), http.StatusUnprocessableEntity
+		if err := s.download(w, r, d); err != nil {
+			invalid(err.Error())
 			break
 		}
 		return
 
 	case action == "save", action == "save-new":
-		if _, err := generate.Prepare(d.request()); err != nil {
-			d.Error, status = "Cannot save: "+err.Error(), http.StatusUnprocessableEntity
+		req := s.request(r, d)
+		if _, err := generate.Prepare(req); err != nil {
+			invalid("Cannot save: " + err.Error())
 			break
 		}
 		c := &store.Code{
 			ID:     id,
 			Name:   d.Name,
 			Type:   d.Type.Name,
-			Fields: d.request().Fields,
+			Fields: req.Fields,
 			Design: d.Design,
 			Tags:   strings.Split(d.Tags, ","),
 		}
@@ -319,38 +407,57 @@ func (s *Server) handleEditorPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d.Preview = makePreview(d)
+	d.Preview = s.makePreview(r, d)
 	s.render(w, status, "editor", d)
 }
 
+// uploadLogo stores the posted logo file as a normalized PNG asset.
+func (s *Server) uploadLogo(r *http.Request) (string, error) {
+	f, _, err := r.FormFile("logo_file")
+	if err != nil {
+		return "", errors.New("choose a PNG, JPEG or SVG file to upload")
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, logo.MaxBytes+1))
+	if err != nil {
+		return "", err
+	}
+	img, err := logo.Decode(data)
+	if err != nil {
+		return "", err
+	}
+	normalized, err := logo.EncodePNG(img)
+	if err != nil {
+		return "", err
+	}
+	return s.store.SaveAsset(r.Context(), "logo", "image/png", normalized)
+}
+
 // download writes the code as an attachment, or returns why it cannot.
-func (s *Server) download(w http.ResponseWriter, d *editorData) error {
-	format, err := render.ParseFormat(d.Format)
+func (s *Server) download(w http.ResponseWriter, r *http.Request, d *editorData) error {
+	opts, err := d.Export.options()
 	if err != nil {
 		return err
 	}
-	code, err := generate.Prepare(d.request())
+	req := s.request(r, d)
+	code, err := generate.Prepare(req)
 	if err != nil {
 		return err
 	}
 	var buf bytes.Buffer
-	if err := code.Export(&buf, format, d.Size); err != nil {
+	if err := code.Export(&buf, opts); err != nil {
 		return err
 	}
 	name := d.Name
 	if name == "" {
-		name = defaultName(d.Type, d.request().Fields)
+		name = defaultName(d.Type, req.Fields)
 	}
-	writeImage(w, buf.Bytes(), format, slug(name)+"."+string(format))
+	writeImage(w, buf.Bytes(), opts.Format, slug(name)+"."+opts.Format.Ext())
 	return nil
 }
 
 func writeImage(w http.ResponseWriter, b []byte, f render.Format, attachmentName string) {
-	ct := "image/png"
-	if f == render.SVG {
-		ct = "image/svg+xml"
-	}
-	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Content-Type", f.ContentType())
 	w.Header().Set("Cache-Control", "no-cache")
 	if attachmentName != "" {
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, attachmentName))
@@ -389,4 +496,16 @@ func slug(s string) string {
 		return "qr-code"
 	}
 	return out
+}
+
+// Radio values for shape pickers; the design stores "" for square.
+func (d editorData) ModuleValue() string   { return orSquare(d.Design.Module) }
+func (d editorData) EyeOuterValue() string { return orSquare(d.Design.EyeOuter) }
+func (d editorData) EyeInnerValue() string { return orSquare(d.Design.EyeInner) }
+
+func orSquare(v string) string {
+	if v == "" {
+		return "square"
+	}
+	return v
 }

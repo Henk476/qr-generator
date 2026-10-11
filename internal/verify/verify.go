@@ -42,7 +42,7 @@ func Check(payload string, sc *render.Scene, outputPx int) Report {
 	var r Report
 	warn := func(format string, a ...any) { r.Warnings = append(r.Warnings, fmt.Sprintf(format, a...)) }
 
-	text, err := Decode(onWhite(render.Rasterize(sc, int(math.Ceil(sc.Size*decodePxPerModule)))))
+	text, err := Decode(onWhite(render.Rasterize(sc, int(math.Ceil(sc.Width*decodePxPerModule)))))
 	switch {
 	case err != nil:
 		warn("the code could not be decoded: increase contrast, raise the quiet zone or simplify the content")
@@ -53,21 +53,25 @@ func Check(payload string, sc *render.Scene, outputPx int) Report {
 		r.Decoded, r.Match = true, true
 	}
 
-	if len(sc.Layers) > 0 {
-		bg := flatten(sc.Background, color.NRGBA{255, 255, 255, 255})
-		fg := flatten(sc.Layers[0].Fill, bg)
-		r.Contrast = contrast(fg, bg)
-		if r.Contrast < MinContrast {
-			warn("low contrast %.1f:1 between foreground and background (aim for at least %.0f:1)", r.Contrast, MinContrast)
-		}
-		if luminance(fg) > luminance(bg) {
-			warn("light-on-dark codes are not read by many scanners: use a darker foreground than background")
-		}
+	// With a gradient, the weakest end decides.
+	bg := flatten(sc.CodeBackground, color.NRGBA{255, 255, 255, 255})
+	r.Contrast = math.Inf(1)
+	inverted := false
+	for _, c := range sc.Foreground.Colors() {
+		fg := flatten(c, bg)
+		r.Contrast = min(r.Contrast, contrast(fg, bg))
+		inverted = inverted || luminance(fg) > luminance(bg)
+	}
+	if r.Contrast < MinContrast {
+		warn("low contrast %.1f:1 between foreground and background (aim for at least %.0f:1)", r.Contrast, MinContrast)
+	}
+	if inverted {
+		warn("light-on-dark codes are not read by many scanners: use a darker foreground than background")
 	}
 	if sc.QuietZone < 2 {
 		warn("a quiet zone below 2 modules can stop some scanners finding the code (4 is standard)")
 	}
-	if px := float64(outputPx) / sc.Size; px < 2 {
+	if px := float64(outputPx) / sc.Width; px < 2 {
 		warn("only %.1f px per module at %d px: export larger for reliable scanning", px, outputPx)
 	}
 	return r

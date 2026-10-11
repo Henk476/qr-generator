@@ -41,7 +41,8 @@ func (s *Server) handleLibrary(w http.ResponseWriter, r *http.Request) {
 		Types:  encode.Types(),
 		Filter: store.ListOptions{Query: q.Get("q"), Type: q.Get("type"), Tag: q.Get("tag"), Sort: q.Get("sort")},
 	}
-	_, _, d.Size = s.defaults(r)
+	_, e := s.defaults(r)
+	d.Size = e.Size
 	var err error
 	if d.Codes, err = s.store.ListCodes(ctx, d.Filter); err != nil {
 		s.serverError(w, err)
@@ -93,23 +94,27 @@ func (s *Server) handleCodeImage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	_, _, size := s.defaults(r)
+	_, e := s.defaults(r)
+	opts := render.Options{Format: format, Size: e.Size, Page: q.Get("page")}
 	if v := q.Get("size"); v != "" {
-		size, _ = strconv.Atoi(v)
+		opts.Size, _ = strconv.Atoi(v)
 	}
-	code, err := generate.Prepare(generate.Request{Type: c.Type, Fields: c.Fields, Design: c.Design})
+	if v := q.Get("print_mm"); v != "" {
+		opts.PrintMM, _ = strconv.ParseFloat(v, 64)
+	}
+	code, err := generate.Prepare(generate.Request{Type: c.Type, Fields: c.Fields, Design: c.Design, Assets: s.assetLoader(r.Context())})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 	var buf bytes.Buffer
-	if err := code.Export(&buf, format, size); err != nil {
+	if err := code.Export(&buf, opts); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	name := ""
 	if q.Has("download") {
-		name = slug(c.Name) + "." + string(format)
+		name = slug(c.Name) + "." + format.Ext()
 	}
 	writeImage(w, buf.Bytes(), format, name)
 }
@@ -171,13 +176,13 @@ func (s *Server) handlePresetImage(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, err)
 		return
 	}
-	code, err := generate.Prepare(generate.Request{Type: "url", Fields: presetSample, Design: p.Design})
+	code, err := generate.Prepare(generate.Request{Type: "url", Fields: presetSample, Design: p.Design, Assets: s.assetLoader(r.Context())})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 	var buf bytes.Buffer
-	if err := code.Export(&buf, render.SVG, 256); err != nil {
+	if err := code.Export(&buf, render.Options{Format: render.SVG, Size: 256}); err != nil {
 		s.serverError(w, err)
 		return
 	}
@@ -210,9 +215,8 @@ type settingsData struct {
 
 func (s *Server) settingsPage(r *http.Request) settingsData {
 	d := settingsData{page: s.newPage(r, "Settings", "settings"), Levels: []string{"L", "M", "Q", "H"}}
-	var design generate.Design
-	design, d.Format, d.Size = s.defaults(r)
-	d.ECC = design.ECC
+	design, e := s.defaults(r)
+	d.Format, d.Size, d.ECC = e.Format, e.Size, design.ECC
 	return d
 }
 

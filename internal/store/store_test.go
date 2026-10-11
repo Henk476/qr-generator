@@ -195,3 +195,45 @@ func TestSettingsAndReopen(t *testing.T) {
 		t.Errorf("%d presets after reopen", len(ps))
 	}
 }
+
+func TestAssets(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	id, err := s.SaveAsset(ctx, "logo", "image/png", []byte("png-bytes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := s.SaveAsset(ctx, "logo", "image/png", []byte("png-bytes"))
+	if err != nil || again != id {
+		t.Errorf("duplicate content got id %q (%v), want %q", again, err, id)
+	}
+	a, err := s.GetAsset(ctx, id)
+	if err != nil || string(a.Data) != "png-bytes" || a.Mime != "image/png" {
+		t.Fatalf("GetAsset = %+v, %v", a, err)
+	}
+	if _, err := s.GetAsset(ctx, "missing"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("missing asset: %v", err)
+	}
+}
+
+func TestMigratesM2Database(t *testing.T) {
+	// A database at schema v1 (M2) gains the assets table on open.
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "old.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, "DROP TABLE assets; PRAGMA user_version=1"); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.SaveAsset(ctx, "logo", "image/png", []byte("x")); err != nil {
+		t.Fatalf("assets table missing after migration: %v", err)
+	}
+}

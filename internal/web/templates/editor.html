@@ -1,5 +1,5 @@
 {{define "editor"}}{{template "head" .}}
-<form id="editor" class="editor" method="post" action="{{.Action}}" novalidate>
+<form id="editor" class="editor" method="post" action="{{.Action}}" enctype="multipart/form-data" novalidate>
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   <input type="hidden" name="type" value="{{.Type.Name}}">
   {{/* First submit button = what Enter in a text field triggers. */}}
@@ -40,52 +40,166 @@
 
     <section class="step" aria-labelledby="step2">
       <h2 id="step2"><span class="num">2</span> Design</h2>
-      <div class="fields">
-        <div class="field field-wide">
-          <label for="preset">Preset</label>
-          <div class="inline">
-            <select id="preset" name="preset" data-autosubmit="apply-preset">
-              <option value="">Choose a preset…</option>
-              {{range .Presets}}<option value="{{.ID}}"{{if eq .ID $.Preset}} selected{{end}}>{{.Name}}{{if not .Builtin}} (yours){{end}}</option>{{end}}
+
+      <div class="field">
+        <label for="preset">Start from a preset</label>
+        <div class="inline">
+          <select id="preset" name="preset" data-autosubmit="apply-preset">
+            <option value="">Choose a preset…</option>
+            {{range .Presets}}<option value="{{.ID}}"{{if eq .ID $.Preset}} selected{{end}}>{{.Name}}{{if not .Builtin}} (yours){{end}}</option>{{end}}
+          </select>
+          <button type="submit" name="action" value="apply-preset" class="btn js-hide" id="apply-preset">Apply</button>
+        </div>
+      </div>
+
+      <fieldset class="group">
+        <legend>Colors</legend>
+        <div class="fields">
+          <div class="field">
+            <label for="fg">Foreground</label>
+            <input id="fg" name="fg" type="color" value="{{.FgHex}}">
+          </div>
+          <div class="field">
+            <label for="bg">Background</label>
+            <input id="bg" name="bg" type="color" value="{{.BgHex}}">
+            <label class="check"><input type="checkbox" name="bg_transparent" value="1"{{if .Transparent}} checked{{end}}> Transparent</label>
+          </div>
+          <div class="field">
+            <label for="gradient">Gradient</label>
+            <select id="gradient" name="gradient">
+              <option value=""{{if eq .Design.Gradient ""}} selected{{end}}>None</option>
+              <option value="linear"{{if eq .Design.Gradient "linear"}} selected{{end}}>Linear</option>
+              <option value="radial"{{if eq .Design.Gradient "radial"}} selected{{end}}>Radial</option>
             </select>
-            <button type="submit" name="action" value="apply-preset" class="btn js-hide" id="apply-preset">Apply</button>
+          </div>
+          <div class="field" data-when="gradient" data-is="*">
+            <label for="fg2">Gradient end</label>
+            <input id="fg2" name="fg2" type="color" value="{{.Fg2Hex}}">
+          </div>
+          <div class="field" data-when="gradient" data-is="linear">
+            <label for="gradient_angle">Angle <output for="gradient_angle" data-mirror="gradient_angle">{{.Design.GradientAngle}}</output>°</label>
+            <input id="gradient_angle" name="gradient_angle" type="range" min="0" max="359" step="15" value="{{.Design.GradientAngle}}">
           </div>
         </div>
-        <div class="field">
-          <label for="fg">Foreground</label>
-          <input id="fg" name="fg" type="color" value="{{.FgHex}}">
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Module shape</legend>
+        <div class="swatches">
+          {{range .Opts.Modules}}<label class="swatch" title="{{.Label}}"><input type="radio" name="module" value="{{.Value}}"{{if eq .Value $.ModuleValue}} checked{{end}}><span class="swatch-img">{{.SVG}}</span><span class="swatch-label">{{.Label}}</span></label>{{end}}
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Corner squares</legend>
+        <p class="sublabel">Border</p>
+        <div class="swatches">
+          {{range .Opts.EyeOuters}}<label class="swatch" title="{{.Label}}"><input type="radio" name="eye_outer" value="{{.Value}}"{{if eq .Value $.EyeOuterValue}} checked{{end}}><span class="swatch-img">{{.SVG}}</span><span class="swatch-label">{{.Label}}</span></label>{{end}}
+        </div>
+        <p class="sublabel">Center</p>
+        <div class="swatches">
+          {{range .Opts.EyeInners}}<label class="swatch" title="{{.Label}}"><input type="radio" name="eye_inner" value="{{.Value}}"{{if eq .Value $.EyeInnerValue}} checked{{end}}><span class="swatch-img">{{.SVG}}</span><span class="swatch-label">{{.Label}}</span></label>{{end}}
+        </div>
+        <div class="fields">
+          <div class="field">
+            <label class="check"><input type="checkbox" name="eye_outer_custom" value="1"{{if .Design.EyeOuterColor}} checked{{end}}> Own border color</label>
+            <input name="eye_outer_color" type="color" value="{{.EyeOuterHex}}" aria-label="Border color" data-when="eye_outer_custom" data-is="*">
+          </div>
+          <div class="field">
+            <label class="check"><input type="checkbox" name="eye_inner_custom" value="1"{{if .Design.EyeInnerColor}} checked{{end}}> Own center color</label>
+            <input name="eye_inner_color" type="color" value="{{.EyeInnerHex}}" aria-label="Center color" data-when="eye_inner_custom" data-is="*">
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Logo</legend>
+        <div class="swatches">
+          <label class="swatch" title="No logo"><input type="radio" name="logo" value=""{{if eq .Design.Logo ""}} checked{{end}}><span class="swatch-img swatch-none">None</span><span class="swatch-label">None</span></label>
+          {{if .UploadedLogo}}<label class="swatch" title="Your uploaded image"><input type="radio" name="logo" value="{{.Design.Logo}}" checked><span class="swatch-img swatch-none">Yours</span><span class="swatch-label">Uploaded image</span></label>{{end}}
+          {{range .Opts.Icons}}{{$v := print "icon:" .Value}}<label class="swatch" title="{{.Label}}"><input type="radio" name="logo" value="{{$v}}"{{if eq $v $.Design.Logo}} checked{{end}}><span class="swatch-img">{{.SVG}}</span><span class="swatch-label">{{.Label}}</span></label>{{end}}
         </div>
         <div class="field">
-          <label for="bg">Background</label>
-          <input id="bg" name="bg" type="color" value="{{.BgHex}}">
-          <label class="check"><input type="checkbox" name="bg_transparent" value="1"{{if .Transparent}} checked{{end}}> Transparent</label>
-        </div>
-        <div class="field">
-          <label for="ecc">Error correction</label>
-          <select id="ecc" name="ecc">
-            <option value="L"{{if eq .Design.ECC "L"}} selected{{end}}>L: 7%, smallest code</option>
-            <option value="M"{{if eq .Design.ECC "M"}} selected{{end}}>M: 15%, recommended</option>
-            <option value="Q"{{if eq .Design.ECC "Q"}} selected{{end}}>Q: 25%</option>
-            <option value="H"{{if eq .Design.ECC "H"}} selected{{end}}>H: 30%, most robust</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="quiet">Quiet zone <output for="quiet" id="quiet-out">{{.Design.QuietZone}}</output></label>
-          <input id="quiet" name="quiet" type="range" min="0" max="10" value="{{.Design.QuietZone}}">
-        </div>
-        <div class="field">
-          <label for="version">QR version</label>
-          <select id="version" name="version">
-            <option value="0">Automatic</option>
-            {{range seq 1 40}}<option value="{{.}}"{{if eq . $.Design.Version}} selected{{end}}>{{.}}</option>{{end}}
-          </select>
-        </div>
-        <div class="field field-wide">
-          <label for="preset_name">Save this design as a preset</label>
+          <label for="logo_file">Upload your own (PNG, JPEG or SVG, up to 5 MB)</label>
           <div class="inline">
-            <input id="preset_name" name="preset_name" type="text" placeholder="Preset name" data-nopreview>
-            <button type="submit" name="action" value="save-preset" class="btn">Save preset</button>
+            <input id="logo_file" name="logo_file" type="file" accept="image/png,image/jpeg,image/svg+xml" data-autosubmit="upload-logo" data-nopreview>
+            <button type="submit" name="action" value="upload-logo" class="btn js-hide" id="upload-logo">Upload</button>
           </div>
+        </div>
+        <div class="fields" data-when="logo" data-is="*">
+          <div class="field">
+            <label for="logo_size">Size <output for="logo_size" data-mirror="logo_size">{{.LogoSize}}</output>%</label>
+            <input id="logo_size" name="logo_size" type="range" min="10" max="30" value="{{.LogoSize}}">
+          </div>
+          <div class="field">
+            <label class="check"><input type="checkbox" name="logo_circle" value="1"{{if .Design.LogoCircle}} checked{{end}}> Round logo</label>
+            <label class="check"><input type="checkbox" name="logo_keep" value="1"{{if .Design.LogoKeepModules}} checked{{end}}> Keep modules behind the logo</label>
+          </div>
+          <p class="hint field-wide">Codes with a logo always use the highest error correction (H) so the hidden modules can be recovered.</p>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Frame</legend>
+        <div class="fields">
+          <div class="field">
+            <label for="frame">Frame</label>
+            <select id="frame" name="frame">
+              {{range .Opts.Frames}}<option value="{{.Value}}"{{if eq .Value $.Design.Frame}} selected{{end}}>{{.Label}}</option>{{end}}
+            </select>
+          </div>
+          <div class="field" data-when="frame" data-is="*">
+            <label for="frame_text">Text</label>
+            <input id="frame_text" name="frame_text" type="text" maxlength="{{.Opts.MaxFrameText}}" value="{{.FrameText}}">
+          </div>
+          <div class="field" data-when="frame" data-is="*">
+            <label for="frame_font">Font</label>
+            <select id="frame_font" name="frame_font">
+              {{range .Opts.Fonts}}<option value="{{.Value}}"{{if eq .Value $.Design.FrameFont}} selected{{end}}>{{.Label}}</option>{{end}}
+            </select>
+          </div>
+          <div class="field" data-when="frame" data-is="*">
+            <label for="frame_color">Frame color</label>
+            <input id="frame_color" name="frame_color" type="color" value="{{.FrameColorHex}}">
+          </div>
+          <div class="field" data-when="frame" data-is="banner-bottom,banner-top,badge,bubble,ticket">
+            <label for="frame_text_color">Text color</label>
+            <input id="frame_text_color" name="frame_text_color" type="color" value="{{.FrameTextHex}}">
+          </div>
+        </div>
+      </fieldset>
+
+      <details class="group">
+        <summary>Advanced</summary>
+        <div class="fields">
+          <div class="field">
+            <label for="ecc">Error correction</label>
+            <select id="ecc" name="ecc">
+              <option value="L"{{if eq .Design.ECC "L"}} selected{{end}}>L: 7%, smallest code</option>
+              <option value="M"{{if eq .Design.ECC "M"}} selected{{end}}>M: 15%, recommended</option>
+              <option value="Q"{{if eq .Design.ECC "Q"}} selected{{end}}>Q: 25%</option>
+              <option value="H"{{if eq .Design.ECC "H"}} selected{{end}}>H: 30%, most robust</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="quiet">Quiet zone <output for="quiet" data-mirror="quiet">{{.Design.QuietZone}}</output></label>
+            <input id="quiet" name="quiet" type="range" min="0" max="10" value="{{.Design.QuietZone}}">
+          </div>
+          <div class="field">
+            <label for="version">QR version</label>
+            <select id="version" name="version">
+              <option value="0">Automatic</option>
+              {{range seq 1 40}}<option value="{{.}}"{{if eq . $.Design.Version}} selected{{end}}>{{.}}</option>{{end}}
+            </select>
+          </div>
+        </div>
+      </details>
+
+      <div class="field">
+        <label for="preset_name">Save this design as a preset</label>
+        <div class="inline">
+          <input id="preset_name" name="preset_name" type="text" placeholder="Preset name" data-nopreview>
+          <button type="submit" name="action" value="save-preset" class="btn">Save preset</button>
         </div>
       </div>
     </section>
@@ -96,13 +210,26 @@
         <div class="field">
           <label for="format">Format</label>
           <select id="format" name="format">
-            <option value="png"{{if eq .Format "png"}} selected{{end}}>PNG</option>
-            <option value="svg"{{if eq .Format "svg"}} selected{{end}}>SVG (vector)</option>
+            {{range .Opts.Formats}}<option value="{{.Value}}"{{if eq .Value $.Export.Format}} selected{{end}}>{{.Label}}</option>{{end}}
           </select>
         </div>
-        <div class="field">
+        <div class="field" data-when="format" data-is="png,jpeg,svg">
           <label for="size">Size (px)</label>
-          <input id="size" name="size" type="number" min="128" max="4096" step="1" value="{{.Size}}">
+          <input id="size" name="size" type="number" min="128" max="4096" step="1" value="{{.Export.Size}}">
+        </div>
+        <div class="field" data-when="format" data-is="jpeg">
+          <label for="quality">JPEG quality</label>
+          <input id="quality" name="quality" type="number" min="1" max="100" value="{{.Export.Quality}}">
+        </div>
+        <div class="field" data-when="format" data-is="pdf">
+          <label for="page">Page</label>
+          <select id="page" name="page">
+            {{range .Opts.Pages}}<option value="{{.Value}}"{{if eq .Value $.Export.Page}} selected{{end}}>{{.Label}}</option>{{end}}
+          </select>
+        </div>
+        <div class="field" data-when="format" data-is="pdf,eps">
+          <label for="print_mm">Printed width (mm)</label>
+          <input id="print_mm" name="print_mm" type="number" min="10" max="1000" step="any" value="{{.Export.PrintMM}}">
         </div>
         <div class="field">
           <label for="name">Name</label>

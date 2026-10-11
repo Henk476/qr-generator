@@ -63,6 +63,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
@@ -178,7 +179,8 @@ output { color: var(--muted); font-weight: 400; margin-left: 4px; }
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 16px; box-shadow: var(--shadow);
 }
-.qr { border-radius: 8px; overflow: hidden; aspect-ratio: 1; display: grid; place-items: center; }
+.qr { border-radius: 8px; overflow: hidden; display: grid; place-items: center; }
+.qr-empty { aspect-ratio: 1; }
 .qr svg { display: block; width: 100%; height: auto; }
 .qr-empty { background: var(--surface-2); color: var(--muted); text-align: center; padding: 24px; }
 .qr.is-loading { opacity: .6; transition: opacity .15s; }
@@ -222,3 +224,28 @@ output { color: var(--muted); font-weight: 400; margin-left: 4px; }
   .step, .panel { padding: 16px; }
   .cards, .cards-small { grid-template-columns: 1fr; }
 }
+
+/* Design step groups */
+.group { border: 0; border-top: 1px solid var(--border); padding: 16px 0 4px; margin: 16px 0 0; }
+.group legend, .group summary { font-weight: 650; font-size: 15px; padding: 0; margin-bottom: 10px; }
+details.group summary { cursor: pointer; margin-bottom: 0; }
+details.group[open] summary { margin-bottom: 12px; }
+.group .fields + .fields, .group .swatches + .fields { margin-top: 12px; }
+.sublabel { font-size: 13px; color: var(--muted); margin: 4px 0 6px; }
+.step > .field + .group, .group + .field { margin-top: 16px; }
+
+/* Swatch pickers: radio buttons shown as small previews */
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
+.swatch { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; font-weight: 500; }
+.swatch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.swatch-img {
+  display: grid; place-items: center; width: 100%; aspect-ratio: 1; padding: 10px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
+}
+.swatch-img svg { width: 100%; height: 100%; }
+.swatch-none { font-size: 12px; color: var(--muted); }
+.swatch-label { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.2; }
+.swatch:hover .swatch-img { background: var(--surface-2); }
+.swatch input:checked + .swatch-img { border: 2px solid var(--accent); background: var(--accent-soft); color: var(--accent); padding: 9px; }
+.swatch input:focus-visible + .swatch-img { outline: 2px solid var(--focus); outline-offset: 2px; }
+input[type="file"] { font: inherit; font-size: 13px; color: var(--muted); max-width: 100%; }

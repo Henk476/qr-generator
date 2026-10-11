@@ -15,12 +15,46 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!editor) return;
   const preview = document.getElementById("preview");
 
+  // The current value of a named control: checked radio, ticked checkbox
+  // ("" when unticked) or plain value.
+  const valueOf = (name) => {
+    const els = editor.querySelectorAll(`[name="${name}"]`);
+    for (const el of els) {
+      if (el.type === "radio" || el.type === "checkbox") {
+        if (el.checked) return el.value;
+      } else {
+        return el.value;
+      }
+    }
+    return "";
+  };
+
+  // Show option groups only when they apply: data-when names a control,
+  // data-is lists the values that show it ("*" = any non-empty value).
+  const conditionals = editor.querySelectorAll("[data-when]");
+  const applyConditions = () => {
+    conditionals.forEach((el) => {
+      const v = valueOf(el.dataset.when);
+      const allowed = el.dataset.is.split(",");
+      el.hidden = !(allowed.includes("*") ? v !== "" : allowed.includes(v));
+    });
+  };
+  applyConditions();
+
+  // Slider readouts.
+  editor.querySelectorAll("output[data-mirror]").forEach((out) => {
+    const input = document.getElementById(out.dataset.mirror);
+    input?.addEventListener("input", () => { out.value = input.value; });
+  });
+
   // Live preview: re-render on any design or content change, debounced.
   let timer = 0;
   let seq = 0;
   const refresh = async () => {
     const mine = ++seq;
-    const body = new URLSearchParams(new FormData(editor));
+    const fd = new FormData(editor);
+    fd.delete("logo_file"); // uploads go through the Upload action only
+    const body = new URLSearchParams(fd);
     body.set("action", "preview");
     preview.querySelector(".qr")?.classList.add("is-loading");
     try {
@@ -32,6 +66,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
   const schedule = (e) => {
+    applyConditions();
     if (e.target.matches("[data-nopreview]")) return;
     clearTimeout(timer);
     timer = setTimeout(refresh, 150);
@@ -39,17 +74,11 @@ document.addEventListener("DOMContentLoaded", () => {
   editor.addEventListener("input", schedule);
   editor.addEventListener("change", schedule);
 
-  // Quiet-zone slider readout.
-  const quiet = document.getElementById("quiet");
-  const quietOut = document.getElementById("quiet-out");
-  quiet?.addEventListener("input", () => { quietOut.value = quiet.value; });
-
-  // Applying a preset reloads the form with its design.
+  // Choosing a preset or a logo file submits the matching action.
   editor.querySelectorAll("[data-autosubmit]").forEach((el) => {
     el.addEventListener("change", () => {
       if (!el.value) return;
-      const button = document.getElementById(el.dataset.autosubmit);
-      editor.requestSubmit(button);
+      editor.requestSubmit(document.getElementById(el.dataset.autosubmit));
     });
   });
 
@@ -58,7 +87,9 @@ document.addEventListener("DOMContentLoaded", () => {
   copy?.addEventListener("click", async () => {
     const label = copy.textContent;
     try {
-      const body = new URLSearchParams(new FormData(editor));
+      const fd = new FormData(editor);
+      fd.delete("logo_file");
+      const body = new URLSearchParams(fd);
       body.set("action", "download");
       body.set("format", "png");
       const res = await fetch(editor.action, { method: "POST", body });

@@ -47,6 +47,7 @@ Canute's QR Generator is a self-hosted, single-binary generator for **static** Q
 │  internal/render      vector scene → SVG / PNG / JPEG / PDF / EPS  (§5, §6)  │
 │  internal/verify      decode-after-render scannability check                 │
 │  internal/generate    pipeline shared by CLI, UI and API                     │
+│  internal/logo        logo decoding: PNG/JPEG/SVG → normalized PNG           │
 │  internal/store       SQLite persistence (saved codes, presets, assets)      │
 │  internal/api         JSON REST API  (/api/v1)                               │
 │  internal/web         server-rendered UI: html/template + small JS (embed)   │
@@ -56,7 +57,7 @@ Canute's QR Generator is a self-hosted, single-binary generator for **static** Q
                                 │
                       data dir (default: OS user-config dir/canute-qr)
                       ├── canute.db        SQLite
-                      ├── assets/          uploaded logos
+                      (uploaded logos are stored inside canute.db)
                       └── config.toml
 ```
 
@@ -127,14 +128,15 @@ All options are live-previewed. Every change re-renders within **200 ms** for a 
 - **Center (inner eye):** square, rounded, circle, diamond, leaf, or star, each with its own color.
 
 ### 5.4 Logo
-- Upload PNG, JPEG, or SVG, or pick from a **built-in icon library**. The library is embedded in the binary and includes link, location, email, WhatsApp, Wi-Fi, vCard, PayPal, Bitcoin, "scan me", menu, and fork/knife, among others.
+- Upload PNG, JPEG, or SVG, or pick from a **built-in icon library** of 15 vector icons drawn for this project: link, location, e-mail, phone, chat (for WhatsApp and SMS), Wi-Fi, contact card, calendar, payment card, Bitcoin, "scan me", menu, fork and knife, home, and star. Brand logos such as WhatsApp or PayPal are not included, because they are trademarks.
+- Uploaded SVGs are rasterized to PNG on upload, so the uploaded markup is never stored, served, or embedded. The trade-off is that an SVG logo is not vector in SVG, PDF, or EPS output.
 - Logo size is set as 10–30% of the code width. The limit is enforced by ECC capacity.
 - **"Remove background behind logo"** clears the modules under the logo area, with adjustable padding.
 - Logo shape can be square or circle-clipped.
 
 ### 5.5 Frames
 - About 10 frame templates: plain border, bottom banner, top banner, speech bubble, rounded badge, and phone outline, among others.
-- The frame phrase defaults to "SCAN ME" and holds up to 30 characters. Font can be Sans-Serif, Serif, or Monospace. The fonts are embedded Go fonts or bundled OFL fonts, never remote.
+- The frame phrase defaults to "SCAN ME" and holds up to 30 characters. Font can be Sans-Serif (Go Bold) or Monospace (Go Mono Bold). Both are embedded Go fonts, and text is converted to outlines, so no output depends on installed fonts. A Serif option needs a bundled OFL font file; see open question Q1.
 - Frame color and text color are set separately.
 
 ### 5.6 Presets
@@ -152,7 +154,7 @@ After every render, `internal/verify` decodes the PNG. If decoding fails, or if 
 | JPEG | ✘ | ✘ | Size and quality |
 | SVG | ✔ | ✔ | Logos are embedded as data URIs and fonts as outlined paths |
 | PDF | ✔ | ✔ | Page size (fit, A4, Letter) and print size in mm or inches |
-| EPS | ✔ | ✔ | For print shops |
+| EPS | ✔ | ✘ | For print shops. PostScript has no transparency, so translucent colors and logo pixels are flattened onto the background. Logos are capped at 512 px. |
 
 - Downloads are free, require no account, and carry **no watermark**.
 - Batch export produces a ZIP (§7).
@@ -168,7 +170,7 @@ After every render, `internal/verify` decodes the PNG. If decoding fails, or if 
 ## 8. Security and privacy
 - Binds to `127.0.0.1` only by default. Binding to another interface requires an explicit `--addr` and prints a warning. No authentication is built in, because the app is single-user and local.
 - CSRF tokens on all state-changing UI forms, and a strict Content-Security-Policy with `default-src 'self'`.
-- Uploads are logos only, with a default limit of 5 MB. Content types are sniffed, and SVG uploads are sanitized by stripping scripts and external references.
+- Uploads are logos only, with a limit of 5 MB and 4096 × 4096 px. The size is checked before the pixels are decoded. Content types are sniffed, and every logo is re-encoded as PNG. This strips metadata and turns SVG into pixels, so no uploaded markup ever reaches a page or an exported file.
 - No telemetry, no update checks, and no outbound requests. An automated test asserts that no outbound HTTP client is ever constructed outside tests.
 
 ## 9. Interfaces
@@ -214,7 +216,7 @@ An OpenAPI 3 document is served at `/api/v1/openapi.json`.
 ```sql
 codes    (id TEXT PK, name, type, content JSON, style JSON, tags JSON,
           created_at, updated_at)
-assets   (id TEXT PK, kind /*logo*/, mime, path, size, sha256, created_at)
+assets   (id TEXT PK, kind /*logo*/, mime, sha256 UNIQUE, data BLOB, created_at)  -- deduplicated by hash
 presets  (id TEXT PK, name, style JSON, builtin BOOL)
 settings (key TEXT PK, value TEXT)
 ```
@@ -256,3 +258,11 @@ English ships first. Catalogs for Spanish, Portuguese, Italian, French, and Germ
 | D3 | There is no routing logic (A/B or time-based). This follows from D5. |
 | D4 | The UI is the user's normal browser on localhost. There is no native desktop wrapper. |
 | D5 | Dynamic codes and scan analytics are out of scope. Hosted content types (PDF, Images, Video, Social Media, and App landing pages) are dropped with them, because they require a server that phones can reach. |
+| D6 | Uploaded logos are stored as normalized PNG blobs in SQLite rather than as files in an `assets/` folder. A backup is then one file, and no user-supplied path is ever touched. |
+| D7 | PDF and EPS are written by hand from the shared vector scene, with no PDF library. They use real gradients (PDF shadings and PostScript `shfill`) and vector text outlines. |
+
+## 16. Open questions
+
+| # | Question |
+|---|---|
+| Q1 | Should a serif frame font be bundled? The Go fonts have no serif face, so this means adding an OFL font file (for example Noto Serif, about 300 KB) to the repository. |

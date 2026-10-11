@@ -49,6 +49,14 @@ var migrations = []string{
 		key   TEXT PRIMARY KEY,
 		value TEXT NOT NULL
 	);`,
+	`CREATE TABLE assets (
+		id         TEXT PRIMARY KEY,
+		kind       TEXT NOT NULL, -- "logo"
+		mime       TEXT NOT NULL,
+		sha256     TEXT NOT NULL UNIQUE,
+		data       BLOB NOT NULL,
+		created_at TEXT NOT NULL
+	);`,
 }
 
 // Open opens (creating if needed) the database at path, migrates it and

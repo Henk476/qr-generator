@@ -124,3 +124,55 @@ func TestIsLoopback(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerateStyledFormats(t *testing.T) {
+	dir := t.TempDir()
+	logoPath := filepath.Join(dir, "logo.svg")
+	os.WriteFile(logoPath, []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="5" fill="#c02020"/></svg>`), 0o644)
+	style := []string{"generate", "--data", "example.com", "--shape", "classy-rounded", "--eye-border", "leaf",
+		"--eye-center", "circle", "--gradient", "radial", "--fg", "#1b2a49", "--fg2", "#0b5d7a",
+		"--frame", "banner-bottom", "--frame-text", "Scan the tide", "--strict"}
+	for _, tc := range []struct {
+		file, magic string
+		extra       []string
+	}{
+		{"a.png", "\x89PNG", []string{"--logo", "icon:wifi"}},
+		{"a.jpg", "\xff\xd8", []string{"--logo", logoPath, "--logo-circle"}},
+		{"a.svg", "<svg", []string{"--logo", "icon:star"}},
+		{"a.pdf", "%PDF", []string{"--logo", logoPath, "--page", "a4", "--print-size", "80"}},
+		{"a.eps", "%!PS", []string{"--logo", "icon:home"}},
+	} {
+		out := filepath.Join(dir, tc.file)
+		code, _, stderr := runCLI(append(append(style, tc.extra...), "-o", out)...)
+		if code != 0 {
+			t.Fatalf("%s: exit %d: %s", tc.file, code, stderr)
+		}
+		b, _ := os.ReadFile(out)
+		if !strings.HasPrefix(string(b), tc.magic) {
+			t.Errorf("%s starts with %q", tc.file, b[:min(len(b), 8)])
+		}
+		if !strings.Contains(stderr, "ECC H") {
+			t.Errorf("%s: a logo should force ECC H: %s", tc.file, stderr)
+		}
+	}
+	code, _, stderr := runCLI("generate", "--data", "a.com", "--shape", "blob", "-o", filepath.Join(dir, "x.png"))
+	if code != 1 || !strings.Contains(stderr, "unknown module shape") {
+		t.Errorf("bad shape: exit %d %s", code, stderr)
+	}
+	code, _, stderr = runCLI("generate", "--data", "a.com", "--logo", filepath.Join(dir, "missing.png"), "-o", filepath.Join(dir, "x.png"))
+	if code != 1 {
+		t.Errorf("missing logo file: exit %d %s", code, stderr)
+	}
+}
+
+func TestStyles(t *testing.T) {
+	code, stdout, _ := runCLI("styles")
+	if code != 0 {
+		t.Fatal(code)
+	}
+	for _, want := range []string{"Module shapes (--shape)", "classy-rounded", "icon:wifi", "banner-bottom"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("styles output missing %q", want)
+		}
+	}
+}

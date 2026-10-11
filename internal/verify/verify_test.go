@@ -80,7 +80,7 @@ func TestExportedPNGDecodes(t *testing.T) {
 	payload := "https://example.com/hello"
 	sc := render1(t, payload, matrix.Options{Level: matrix.M}, render.DefaultStyle())
 	var buf bytes.Buffer
-	if err := render.Export(&buf, sc, render.PNG, 200); err != nil {
+	if err := render.Export(&buf, sc, render.Options{Format: render.PNG, Size: 200}); err != nil {
 		t.Fatal(err)
 	}
 	img, err := png.Decode(&buf)
@@ -123,5 +123,70 @@ func TestContrast(t *testing.T) {
 	}
 	if c := contrast(white, white); c != 1 {
 		t.Errorf("white/white contrast = %v, want 1", c)
+	}
+}
+
+// TestStyledRoundTrip decodes codes in every module shape, eye shape,
+// frame and logo setup. Styling must never cost scannability.
+func TestStyledRoundTrip(t *testing.T) {
+	payload := "https://example.com/canute?tide=out"
+	navy := color.NRGBA{0x1b, 0x2a, 0x49, 255}
+	base := func() render.Style {
+		s := render.DefaultStyle()
+		s.Foreground = navy
+		return s
+	}
+	type tc struct {
+		name  string
+		level matrix.Level
+		style render.Style
+	}
+	var cases []tc
+	for _, m := range render.ModuleShapes {
+		s := base()
+		s.Module = m.Value
+		cases = append(cases, tc{"module/" + m.Value, matrix.M, s})
+	}
+	for _, o := range render.EyeOuterShapes {
+		for _, i := range render.EyeInnerShapes {
+			s := base()
+			s.EyeOuter, s.EyeInner = o.Value, i.Value
+			cases = append(cases, tc{"eye/" + o.Value + "+" + i.Value, matrix.M, s})
+		}
+	}
+	for _, f := range render.Frames {
+		s := base()
+		s.Frame = &render.Frame{Kind: f.Value, Text: "SCAN ME", Font: "sans", Color: navy, TextColor: color.NRGBA{255, 255, 255, 255}}
+		cases = append(cases, tc{"frame/" + f.Value, matrix.M, s})
+	}
+	for _, icon := range render.IconNames() {
+		for _, circle := range []bool{false, true} {
+			s := base()
+			s.Logo = &render.Logo{Icon: icon, Size: 0.3, Knockout: true, Circle: circle}
+			cases = append(cases, tc{fmt.Sprintf("logo/%s/circle=%v", icon, circle), matrix.H, s})
+		}
+	}
+	for _, g := range []render.GradientKind{render.LinearGradient, render.RadialGradient} {
+		s := base()
+		s.Gradient = render.Gradient{Kind: g, Color2: color.NRGBA{0x0b, 0x5d, 0x7a, 255}, Angle: 30}
+		s.Module = "dots"
+		cases = append(cases, tc{"gradient/" + string(g), matrix.M, s})
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := Check(payload, render1(t, payload, matrix.Options{Level: c.level}, c.style), 1024)
+			if !r.Match {
+				t.Fatalf("decode failed: %v", r.Warnings)
+			}
+		})
+	}
+}
+
+func TestGradientContrastUsesWeakestEnd(t *testing.T) {
+	s := render.DefaultStyle()
+	s.Gradient = render.Gradient{Kind: render.LinearGradient, Color2: color.NRGBA{0xcc, 0xcc, 0xcc, 255}}
+	r := Check("hello", render1(t, "hello", matrix.Options{Level: matrix.M}, s), 1024)
+	if r.Contrast > 2 || !strings.Contains(strings.Join(r.Warnings, "\n"), "low contrast") {
+		t.Errorf("contrast %.1f, warnings %v", r.Contrast, r.Warnings)
 	}
 }

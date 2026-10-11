@@ -28,6 +28,12 @@ var builtinPresets = []Preset{
 	{ID: "parchment", Name: "Parchment", Design: generate.Design{ECC: "M", QuietZone: 4, Foreground: "#3b2f2a", Background: "#faf3e0"}},
 	{ID: "transparent", Name: "Transparent", Design: generate.Design{ECC: "M", QuietZone: 4, Foreground: "#000000", Background: "transparent"}},
 	{ID: "print", Name: "Print (high ECC)", Design: generate.Design{ECC: "H", QuietZone: 4, Foreground: "#000000", Background: "#ffffff"}},
+	{ID: "soft-dots", Name: "Soft dots", Design: generate.Design{ECC: "Q", QuietZone: 4, Foreground: "#1b4f8a", Background: "#ffffff",
+		Module: "dots", EyeOuter: "circle", EyeInner: "circle"}},
+	{ID: "tide", Name: "Tide (gradient)", Design: generate.Design{ECC: "Q", QuietZone: 4, Foreground: "#0b5d7a", Background: "#ffffff",
+		Gradient: "linear", Foreground2: "#1b2a49", GradientAngle: 45, Module: "rounded", EyeOuter: "rounded", EyeInner: "rounded"}},
+	{ID: "scan-me", Name: "Scan me badge", Design: generate.Design{ECC: "Q", QuietZone: 3, Foreground: "#1b2a49", Background: "#ffffff",
+		Module: "classy-rounded", EyeOuter: "leaf", EyeInner: "leaf", Frame: "banner-bottom"}},
 }
 
 func (s *Store) syncBuiltinPresets(ctx context.Context) error {

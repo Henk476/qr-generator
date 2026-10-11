@@ -14,9 +14,11 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Henk476/qr-generator/internal/encode"
+	"github.com/Henk476/qr-generator/internal/logo"
 	"github.com/Henk476/qr-generator/internal/store"
 )
 
@@ -37,18 +39,20 @@ type Options struct {
 
 // Server is the web UI.
 type Server struct {
-	store   *store.Store
-	opts    Options
-	pages   map[string]*template.Template
-	csrf    string
-	handler http.Handler
+	store     *store.Store
+	opts      Options
+	pages     map[string]*template.Template
+	csrf      string
+	options   *designOptions
+	logoCache sync.Map // asset ID -> decoded image.Image; assets never change
+	handler   http.Handler
 }
 
 const csrfSettingKey = "csrf_token"
 
 // New builds the UI handler.
 func New(ctx context.Context, st *store.Store, opts Options) (*Server, error) {
-	s := &Server{store: st, opts: opts}
+	s := &Server{store: st, opts: opts, options: newDesignOptions()}
 	var err error
 	if s.pages, err = parsePages(); err != nil {
 		return nil, err
@@ -116,7 +120,7 @@ func (s *Server) secure(next http.Handler) http.Handler {
 				http.Error(w, "cross-site request refused", http.StatusForbidden)
 				return
 			}
-			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			r.Body = http.MaxBytesReader(w, r.Body, logo.MaxBytes+1<<20) // room for a logo upload
 			if subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(s.csrf)) != 1 {
 				http.Error(w, "invalid or missing form token: reload the page and try again", http.StatusForbidden)
 				return

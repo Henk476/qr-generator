@@ -1,12 +1,16 @@
 package web
 
 import (
+	"bytes"
 	"context"
+	"image"
 	"image/png"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -331,4 +335,118 @@ func TestDefaultNameAndSlug(t *testing.T) {
 			t.Errorf("slug(%q) = %q, want %q", in, got, want)
 		}
 	}
+}
+
+// multipartPost submits fields plus an optional file as multipart/form-data.
+func (a *testApp) multipartPost(path string, v url.Values, fileField, fileName string, file []byte) *httptest.ResponseRecorder {
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	if !v.Has("csrf") {
+		v.Set("csrf", a.srv.csrf)
+	}
+	for k, vs := range v {
+		for _, x := range vs {
+			mw.WriteField(k, x)
+		}
+	}
+	if fileField != "" {
+		fw, _ := mw.CreateFormFile(fileField, fileName)
+		fw.Write(file)
+	}
+	mw.Close()
+	req := httptest.NewRequest(http.MethodPost, path, &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	return a.do(req)
+}
+
+func TestDesignOptionsInPreview(t *testing.T) {
+	a := newTestApp(t)
+	rec := a.post("/preview", editorForm("preview",
+		"module", "dots", "eye_outer", "circle", "eye_inner", "star",
+		"gradient", "linear", "fg2", "#0b5d7a", "gradient_angle", "45",
+		"eye_inner_custom", "1", "eye_inner_color", "#c02020",
+		"logo", "icon:wifi", "logo_size", "25", "logo_circle", "1",
+		"frame", "badge", "frame_text", "SCAN THE TIDE", "frame_font", "mono"))
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, "<linearGradient", `fill="#c02020"`, "Scan check passed", "ECC H")
+}
+
+func TestEditorRendersPickers(t *testing.T) {
+	a := newTestApp(t)
+	rec := a.get("/new?preset=tide")
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, `name="module" value="rounded" checked`, `name="gradient"`, `value="linear" selected`,
+		`name="logo" value="icon:wifi"`, `data-when="frame"`, `value="pdf"`, `enctype="multipart/form-data"`)
+}
+
+func TestLogoUpload(t *testing.T) {
+	a := newTestApp(t)
+	logoImg := image.NewNRGBA(image.Rect(0, 0, 64, 64))
+	for i := range logoImg.Pix {
+		logoImg.Pix[i] = 0xc0
+	}
+	var pngBytes bytes.Buffer
+	png.Encode(&pngBytes, logoImg)
+
+	rec := a.multipartPost("/new", editorForm("upload-logo"), "logo_file", "logo.png", pngBytes.Bytes())
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, "Logo uploaded", "Uploaded image", "<image ")
+	m := regexp.MustCompile(`name="logo" value="(asset:[0-9a-f]+)" checked`).FindStringSubmatch(rec.Body.String())
+	if m == nil {
+		t.Fatal("uploaded logo not selected")
+	}
+
+	// Saving keeps the logo reference, and the library image renders it.
+	rec = a.post("/new", editorForm("save", "logo", m[1]))
+	wantStatus(t, rec, http.StatusSeeOther)
+	id := strings.TrimSuffix(strings.TrimPrefix(rec.Header().Get("Location"), "/codes/"), "?saved")
+	c, _ := a.store.GetCode(context.Background(), id)
+	if c.Design.Logo != m[1] || c.Design.LogoSize != 0 {
+		t.Errorf("saved design %+v", c.Design)
+	}
+	rec = a.get("/codes/" + id + "/image?format=svg")
+	wantBody(t, rec, "data:image/png;base64,")
+
+	// Rejected uploads explain why.
+	rec = a.multipartPost("/new", editorForm("upload-logo"), "logo_file", "x.gif", []byte("GIF89a....."))
+	wantStatus(t, rec, http.StatusUnprocessableEntity)
+	wantBody(t, rec, "unsupported logo type")
+	rec = a.multipartPost("/new", editorForm("upload-logo"), "", "", nil)
+	wantStatus(t, rec, http.StatusUnprocessableEntity)
+	wantBody(t, rec, "choose a PNG")
+
+	// An SVG upload is rasterized: no SVG markup comes back.
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><script>alert(1)</script><rect width="10" height="10"/></svg>`
+	rec = a.multipartPost("/new", editorForm("upload-logo"), "logo_file", "x.svg", []byte(svg))
+	wantStatus(t, rec, http.StatusOK)
+	if strings.Contains(rec.Body.String(), "alert(1)") {
+		t.Error("uploaded SVG markup leaked into the page")
+	}
+}
+
+func TestDownloadFormats(t *testing.T) {
+	a := newTestApp(t)
+	tests := []struct {
+		format, ctype, ext, magic string
+	}{
+		{"jpeg", "image/jpeg", "jpg", "\xff\xd8"},
+		{"pdf", "application/pdf", "pdf", "%PDF-1.4"},
+		{"eps", "application/postscript", "eps", "%!PS-Adobe-3.0 EPSF-3.0"},
+	}
+	for _, tt := range tests {
+		rec := a.post("/new", editorForm("download", "format", tt.format, "frame", "border", "name", "Shop"))
+		wantStatus(t, rec, http.StatusOK)
+		if ct := rec.Header().Get("Content-Type"); ct != tt.ctype {
+			t.Errorf("%s: Content-Type %q", tt.format, ct)
+		}
+		if cd := rec.Header().Get("Content-Disposition"); cd != `attachment; filename="shop.`+tt.ext+`"` {
+			t.Errorf("%s: Content-Disposition %q", tt.format, cd)
+		}
+		if !strings.HasPrefix(rec.Body.String(), tt.magic) {
+			t.Errorf("%s: body starts %q", tt.format, rec.Body.String()[:10])
+		}
+	}
+	rec := a.post("/new", editorForm("download", "format", "pdf", "page", "a4", "print_mm", "400"))
+	wantStatus(t, rec, http.StatusUnprocessableEntity)
+	wantBody(t, rec, "does not fit")
 }
