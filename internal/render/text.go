@@ -1,6 +1,7 @@
 package render
 
 import (
+	_ "embed"
 	"sync"
 
 	"golang.org/x/image/font"
@@ -9,6 +10,9 @@ import (
 	"golang.org/x/image/font/sfnt"
 	"golang.org/x/image/math/fixed"
 )
+
+//go:embed fonts/LibreBaskerville-Bold.ttf
+var libreBaskervilleBold []byte
 
 var fonts = struct {
 	once sync.Once
@@ -19,7 +23,7 @@ var fonts = struct {
 func fontFor(name string) *sfnt.Font {
 	fonts.once.Do(func() {
 		fonts.byID = map[string]*sfnt.Font{}
-		for id, ttf := range map[string][]byte{"sans": gobold.TTF, "mono": gomonobold.TTF} {
+		for id, ttf := range map[string][]byte{"sans": gobold.TTF, "serif": libreBaskervilleBold, "mono": gomonobold.TTF} {
 			f, err := sfnt.Parse(ttf)
 			if err != nil {
 				panic("render: embedded font: " + err.Error())

@@ -388,3 +388,20 @@ func BenchmarkExportPNG1024(b *testing.B) {
 		})
 	}
 }
+
+func TestEveryFontLoadsAndDiffers(t *testing.T) {
+	widths := map[float64]string{}
+	for _, f := range Fonts {
+		if fontFor(f.Value) == nil {
+			t.Fatalf("font %s did not load", f.Value)
+		}
+		p, w, capH := textOutline("Scan Me", f.Value)
+		if p.Empty() || w <= 0 || capH <= 0 {
+			t.Errorf("font %s: empty outline (w=%v cap=%v)", f.Value, w, capH)
+		}
+		if other, dup := widths[w]; dup {
+			t.Errorf("fonts %s and %s produce identical widths: fallback in use?", f.Value, other)
+		}
+		widths[w] = f.Value
+	}
+}

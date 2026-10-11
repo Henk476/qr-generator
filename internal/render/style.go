@@ -76,6 +76,7 @@ var Frames = []Option{
 // Fonts lists the frame fonts.
 var Fonts = []Option{
 	{"sans", "Sans-serif"},
+	{"serif", "Serif"},
 	{"mono", "Monospace"},
 }
 

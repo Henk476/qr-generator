@@ -136,7 +136,7 @@ All options are live-previewed. Every change re-renders within **200 ms** for a 
 
 ### 5.5 Frames
 - About 10 frame templates: plain border, bottom banner, top banner, speech bubble, rounded badge, and phone outline, among others.
-- The frame phrase defaults to "SCAN ME" and holds up to 30 characters. Font can be Sans-Serif (Go Bold) or Monospace (Go Mono Bold). Both are embedded Go fonts, and text is converted to outlines, so no output depends on installed fonts. A Serif option needs a bundled OFL font file; see open question Q1.
+- The frame phrase defaults to "SCAN ME" and holds up to 30 characters. Font can be Sans-Serif (Go Bold), Serif (Libre Baskerville Bold, bundled under the SIL OFL in `internal/render/fonts/`), or Monospace (Go Mono Bold). Fonts are embedded, and text is converted to outlines, so no output depends on installed fonts.
 - Frame color and text color are set separately.
 
 ### 5.6 Presets
@@ -265,4 +265,4 @@ English ships first. Catalogs for Spanish, Portuguese, Italian, French, and Germ
 
 | # | Question |
 |---|---|
-| Q1 | Should a serif frame font be bundled? The Go fonts have no serif face, so this means adding an OFL font file (for example Noto Serif, about 300 KB) to the repository. |
+| Q1 | ~~Should a serif frame font be bundled?~~ Resolved: Libre Baskerville Bold (154 KB, SIL OFL 1.1) is bundled. |
