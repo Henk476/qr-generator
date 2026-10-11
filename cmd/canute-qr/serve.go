@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/Henk476/qr-generator/internal/web"
@@ -23,6 +24,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	addr := fs.String("addr", "127.0.0.1:8080", "address to listen on; keep it on 127.0.0.1 unless you know you need otherwise")
 	dataDir := fs.String("data-dir", "", dataDirUsage)
 	open := fs.Bool("open", false, "open the UI in your default browser")
+	allowedHosts := fs.String("allowed-hosts", "", `comma-separated Host values to accept, e.g. "localhost:8080,qr.home.lan:8080" (default: the loopback names when --addr is loopback, otherwise any)`)
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -53,11 +55,22 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 
 	var allowed []string
 	urlHost := host
-	if isLoopback(host) {
+	switch {
+	case *allowedHosts != "":
+		for _, h := range strings.Split(*allowedHosts, ",") {
+			if h = strings.TrimSpace(h); h != "" {
+				allowed = append(allowed, h)
+			}
+		}
+	case isLoopback(host):
 		// Only accept our own host names: blocks DNS rebinding from web pages.
 		allowed = []string{"127.0.0.1:" + port, "localhost:" + port, "[::1]:" + port}
-	} else {
+	}
+	if !isLoopback(host) {
 		fmt.Fprintf(stderr, "warning: listening on %s, so other devices on your network can reach this UI. It has no password.\n", ln.Addr())
+		if len(allowed) == 0 {
+			fmt.Fprintln(stderr, "warning: any Host header is accepted; set --allowed-hosts to block DNS-rebinding attacks.")
+		}
 	}
 	if host == "" || host == "0.0.0.0" || host == "::" || host == "localhost" {
 		urlHost = "127.0.0.1"

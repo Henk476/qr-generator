@@ -40,25 +40,27 @@ Canute's QR Generator is a self-hosted, single-binary generator for **static** Q
 ```
 ┌──────────────────────── canute-qr (single Go binary) ────────────────────────┐
 │                                                                              │
-│  cmd/canute-qr        CLI entry (serve | generate | batch | export | ...)    │
+│  cmd/canute-qr        CLI (serve, generate, batch, backup, restore, ...)     │
 │                                                                              │
 │  internal/encode      payload builders per content type  (§4)                │
-│  internal/matrix      QR / 2D barcode matrix generation (interface)          │
+│  internal/matrix      QR matrix generation (interface)                       │
+│  internal/barcode     Data Matrix, PDF417, Aztec, Code 128, EAN-13, UPC-A    │
 │  internal/render      vector scene → SVG / PNG / JPEG / PDF / EPS  (§5, §6)  │
 │  internal/verify      decode-after-render scannability check                 │
 │  internal/generate    pipeline shared by CLI, UI and API                     │
 │  internal/logo        logo decoding: PNG/JPEG/SVG → normalized PNG           │
+│  internal/batch       CSV → ZIP bulk generation with report.csv              │
 │  internal/store       SQLite persistence (saved codes, presets, assets)      │
 │  internal/api         JSON REST API  (/api/v1)                               │
 │  internal/web         server-rendered UI: html/template + small JS (embed)   │
-│  internal/i18n        message catalogs                                       │
+│  internal/i18n        UI translations (de, es, fr, it, pt)                   │
 │                                                                              │
 └───────────────────────────────┬──────────────────────────────────────────────┘
                                 │
                       data dir (default: OS user-config dir/canute-qr)
-                      ├── canute.db        SQLite
-                      (uploaded logos are stored inside canute.db)
-                      └── config.toml
+                      └── canute.db        SQLite: codes, presets, settings and
+                                           uploaded logos (settings are edited
+                                           in the UI; there is no config file)
 ```
 
 ### 3.1 Technology choices
@@ -71,10 +73,11 @@ Canute's QR Generator is a self-hosted, single-binary generator for **static** Q
 | 2D barcodes | `github.com/boombuler/barcode` | Data Matrix, PDF417, Aztec, Code128, and EAN/UPC |
 | Database | `modernc.org/sqlite` | Pure Go and CGO-free, so it cross-compiles to Windows |
 | Raster | `image`, `golang.org/x/image/vector` | Anti-aliased path rasterization |
-| PDF | `github.com/go-pdf/fpdf` or a hand-written vector PDF writer | Vector output |
+| PDF | Hand-written PDF 1.4 writer from the shared vector scene | Vector output with shadings and image soft masks, no dependency |
 | EPS | Hand-written PostScript emitter from the shared vector scene | Simple and dependency-free |
 | Decoding/verify | `github.com/makiuchi-d/gozxing` | Decodes the render to confirm it scans |
-| Config | TOML (`github.com/BurntSushi/toml`) | Easy for humans to edit |
+| SVG logos | `github.com/srwiley/oksvg` + `rasterx` | Rasterizes uploaded SVG logos to PNG |
+| Fonts | Go fonts (`golang.org/x/image/font/gofont`) and Libre Baskerville (OFL) | Embedded, outlined into paths |
 
 All dependencies must be MIT, BSD, or Apache-2.0 licensed, or similarly permissive. **No dependency may make network calls at runtime.**
 
@@ -105,7 +108,7 @@ All codes are static: the content is encoded directly in the symbol and works wi
 | 7 | **WhatsApp** | `https://wa.me/{num}?text=` | |
 | 8 | **Wi-Fi** | `WIFI:T:{WPA/WEP/nopass};S:;P:;H:true;;` | Escapes `\ ; , : "` |
 | 9 | **Event** | iCalendar `BEGIN:VEVENT…END:VEVENT` | Title, start and end, time zone, location, and description |
-| 10 | **2D Barcode** | Data Matrix, PDF417, Aztec, Code128, EAN-13, or UPC-A | Product and logistics data. The symbology picker validates check digits. Design options are limited to colors and quiet zone. |
+| 10 | **Barcode** | Data Matrix, PDF417, Aztec, Code 128, EAN-13, or UPC-A | Product and logistics data. EAN-13 and UPC-A add or verify the GS1 check digit; text symbologies take ASCII. Colors, gradient, and quiet zone apply (linear codes get at least a 10-module side quiet zone and human-readable text). Every symbology is decode-checked except PDF417, which has no offline reader, so the UI reports it as not checked. |
 
 **Stretch types:** Location (`geo:lat,lng`), Crypto payment (`bitcoin:` and `ethereum:` URIs), and PayPal.me link.
 
@@ -164,14 +167,15 @@ After every render, `internal/verify` decodes the PNG. If decoding fails, or if 
 - **Saving is optional.** A code can be generated and downloaded without saving it.
 - Library view lists saved codes with search, a type filter, tags, and sorting.
 - Codes can be re-opened for editing, duplicated, re-exported, or deleted. Editing a saved code produces a new image; it does not change codes that are already printed.
-- **Bulk generation:** import a CSV with one row per code and columns mapped to type fields. One shared style or preset is applied, and the output is a ZIP of image files. Optionally, the codes are also saved to the library.
-- Full backup and restore: a single `.zip` containing the DB and assets.
+- **Bulk generation** (Bulk page, `canute-qr batch`, `POST /api/v1/batch`): a CSV with a header row whose columns are named after content fields, plus optional `type` and `name` columns. Other headers can be mapped with `header=field` pairs. One preset or design applies to all rows, up to 5,000 rows. The output is a ZIP of images plus `report.csv`, which gives each row's status. A failing row is reported, not fatal. Optionally the codes are also saved to the library with tags.
+- **Backup and restore** (Settings page, `canute-qr backup` and `restore`): a single `.zip` with a consistent SQLite snapshot and a manifest. Restore migrates older backups and replaces codes, user presets, logos, and settings in one transaction. Built-in presets and the machine-local CSRF and API tokens are kept, and nothing changes if the archive is invalid.
 
 ## 8. Security and privacy
-- Binds to `127.0.0.1` only by default. Binding to another interface requires an explicit `--addr` and prints a warning. No authentication is built in, because the app is single-user and local.
-- CSRF tokens on all state-changing UI forms, and a strict Content-Security-Policy with `default-src 'self'`.
-- Uploads are logos only, with a limit of 5 MB and 4096 × 4096 px. The size is checked before the pixels are decoded. Content types are sniffed, and every logo is re-encoded as PNG. This strips metadata and turns SVG into pixels, so no uploaded markup ever reaches a page or an exported file.
-- No telemetry, no update checks, and no outbound requests. An automated test asserts that no outbound HTTP client is ever constructed outside tests.
+- Binds to `127.0.0.1` only by default, and then accepts only its own host names in the `Host` header, which blocks DNS rebinding. Binding to another interface requires an explicit `--addr` and prints a warning; `--allowed-hosts` restores the host check there (the Docker image uses it). The web UI has no login, because the app is single-user and local.
+- CSRF tokens on all state-changing UI forms, a `Sec-Fetch-Site` check, request size limits, and a strict Content-Security-Policy with `default-src 'self'` and no inline scripts or styles.
+- The REST API needs `Authorization: Bearer <token>`. The token is generated once, shown in Settings, and can be replaced there. Cross-site pages cannot read it, and browsers will not send it cross-origin without CORS approval, which the server never gives.
+- Uploads are logos (5 MB, 4096 × 4096 px), CSV files (5 MB), and backups (512 MB, on the restore route only). Image sizes are checked before the pixels are decoded. Every logo is re-encoded as PNG. This strips metadata and turns SVG into pixels, so no uploaded markup ever reaches a page or an exported file.
+- No telemetry, no update checks, and no outbound requests. A test scans the source and fails if any program code creates an HTTP client, makes a request, or dials out.
 
 ## 9. Interfaces
 
@@ -181,35 +185,36 @@ The UI is server-rendered. Every page is a plain HTML form that works without Ja
 2. **Design:** frame, shape, eyes, logo, and colors, with a live preview pinned on the right.
 3. **Download:** choose the format and size, then download and optionally save to the library.
 
-Other pages: **Library**, **Presets**, and **Settings**. Settings covers language, default export options, and backup.
+Other pages: **Library**, **Bulk**, **Presets**, and **Settings**. Settings covers language, theme, default export options, the API token, and backup and restore.
 
 Light and dark themes are supported. The UI is responsive and keyboard accessible, targeting WCAG 2.1 AA. `canute-qr serve --open` opens the UI in the default browser.
 
 ### 9.2 CLI
 ```
-canute-qr serve    [--addr 127.0.0.1:8080] [--data-dir PATH] [--open]
-canute-qr generate --type url --data https://example.com --style preset:classic \
-                   --format svg --size 1024 -o code.svg
-canute-qr generate --type wifi --ssid Home --password ... --enc WPA -o wifi.png
-canute-qr batch    --csv codes.csv --map mapping.toml --format png --out codes.zip
-canute-qr export   --id <code-id> --format pdf -o out.pdf
+canute-qr serve    [--addr 127.0.0.1:8080] [--data-dir PATH] [--open] [--allowed-hosts LIST]
+canute-qr generate --data https://example.com --shape dots --logo icon:link -o code.svg
+canute-qr generate --type wifi --ssid Home --password ... -o wifi.png
+canute-qr generate --type barcode --symbology ean13 --data 590123412345 -o product.pdf
+canute-qr batch    --csv codes.csv [--type url] [--map "Website=url"] --format png -o codes.zip
 canute-qr backup   -o backup.zip      |   canute-qr restore backup.zip
-canute-qr version
+canute-qr types    |   canute-qr styles   |   canute-qr version
 ```
-`generate` and `batch` work **without** a running server or a database.
+`generate` and `batch` take every design and export option as flags and work **without** a running server or a database.
 
 ### 9.3 REST API (`/api/v1`, JSON)
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/render` | Stateless render: payload, style, and format in, image bytes out |
-| GET/POST | `/codes` | List or save codes |
-| GET/PATCH/DELETE | `/codes/{id}` | Read, update, or delete a saved code |
-| GET | `/codes/{id}/image?format=&size=` | Download a saved code's image |
-| GET/POST/DELETE | `/presets[/{id}]` | Style presets |
-| POST | `/assets` | Upload a logo |
-| POST | `/batch` | Bulk generate |
+| POST | `/render` | Stateless render: type, fields, design and export options in, image bytes out |
+| POST | `/check` | Validate and run the scan check; JSON report |
+| GET | `/types`, `/styles` | Content types with their fields; allowed style values |
+| GET/POST | `/codes` | List (search, type, tag, sort) or save codes |
+| GET/PATCH/DELETE | `/codes/{id}` | Read, partly update, or delete a saved code |
+| GET | `/codes/{id}/image?format=&size=` | Render a saved code |
+| GET/POST/DELETE | `/presets[/{id}]` | Style presets (built-ins cannot be deleted) |
+| POST | `/assets` | Upload a logo; returns `asset:<id>` for use in a design |
+| POST | `/batch` | CSV to ZIP |
 
-An OpenAPI 3 document is served at `/api/v1/openapi.json`.
+Partial `design` objects merge onto the defaults, or onto the current design for PATCH. Errors are `{"error": "..."}`. An OpenAPI 3.0 document is served at `/api/v1/openapi.json` without a token.
 
 ## 10. Data model (SQLite)
 
@@ -223,7 +228,7 @@ settings (key TEXT PK, value TEXT)
 Migrations are embedded and versioned, and run automatically on startup.
 
 ## 11. Internationalization
-English ships first. Catalogs for Spanish, Portuguese, Italian, French, and German follow, matching qr.io's language set. Strings live in embedded JSON catalogs, and the language comes from Settings or `Accept-Language`.
+The web UI is available in English, German, Spanish, French, Italian, and Portuguese, matching qr.io's language set. English strings are the catalog keys, catalogs are embedded JSON, and anything missing falls back to English. The language comes from Settings, else from `Accept-Language`. Scan-check warnings are translated; content validation errors, the CLI, and the API stay in English. A test extracts every translatable string and fails if any catalog misses one or garbles a format verb.
 
 ## 12. Quality requirements
 
@@ -233,21 +238,23 @@ English ships first. Catalogs for Spanish, Portuguese, Italian, French, and Germ
 | Performance | Single render to 1024 px PNG in **< 50 ms** on a mid-range laptop. A batch of 1,000 PNGs in < 30 s. |
 | Footprint | Binary < 40 MB. Idle RAM < 50 MB. |
 | Portability | `GOOS` windows, darwin, and linux; `GOARCH` amd64 and arm64; `CGO_ENABLED=0`. |
-| Code quality | `go vet`, `staticcheck`, and `golangci-lint` are clean. `go test ./... -race` passes. Core packages (`encode`, `render`) have ≥ 80% coverage. |
+| Code quality | `go vet` and `gofmt` are clean, and `go test ./...` passes on Linux, Windows, and macOS in CI, with `-race` on Linux. Core packages (`encode`, `render`) have ≥ 80% coverage. (`staticcheck` and `golangci-lint` are not yet run.) |
 | Offline | The full test suite and the app run with networking disabled. |
 
 ## 13. Packaging and distribution
-- `goreleaser` builds archives for all targets, plus a Windows `.zip` with `canute-qr.exe`.
+- `.goreleaser.yaml` builds archives for Windows, macOS, and Linux on amd64 and arm64 (a `.zip` for Windows), with checksums and the bundled font license. `.github/workflows/release.yml` runs it when a `v*` tag is pushed; `ci.yml` runs vet, format, and tests on every push to main and every pull request.
+- An optional `Dockerfile` builds a distroless, non-root image that serves on port 8080 with its data in `/data`, keeping the host check on with `--allowed-hosts`.
+- `go install github.com/Henk476/qr-generator/cmd/canute-qr@latest` works too; the version then comes from the module.
 
 ## 14. Milestones
 
-| Milestone | Scope |
-|---|---|
-| **M1: Core engine** | All QR content types in §4 (types 1–9); basic style (colors, ECC, quiet zone); PNG and SVG export; CLI `generate`; verify step |
-| **M2: Web UI** | Server-rendered 3-step UI, live preview, SQLite library, presets |
-| **M3: Full design** | Module and eye shapes, gradients, logos with background knockout, icon library, frames; PDF, EPS, and JPEG export |
-| **M4: Bulk, API, polish** | CSV batch, REST API and OpenAPI, 2D barcodes, backup and restore, i18n, release packaging |
-| **Stretch** | Location, crypto, and PayPal types; per-eye styling; custom fonts |
+| Milestone | Scope | Status |
+|---|---|---|
+| **M1: Core engine** | All QR content types in §4 (types 1–9); basic style (colors, ECC, quiet zone); PNG and SVG export; CLI `generate`; verify step | Done |
+| **M2: Web UI** | Server-rendered 3-step UI, live preview, SQLite library, presets | Done |
+| **M3: Full design** | Module and eye shapes, gradients, logos with background knockout, icon library, frames; PDF, EPS, and JPEG export | Done |
+| **M4: Bulk, API, polish** | CSV batch, REST API and OpenAPI, 2D barcodes, backup and restore, i18n, release packaging | Done |
+| **Stretch** | Location, crypto, and PayPal types; per-eye styling; custom fonts | Open |
 
 ## 15. Decisions
 
@@ -260,6 +267,8 @@ English ships first. Catalogs for Spanish, Portuguese, Italian, French, and Germ
 | D5 | Dynamic codes and scan analytics are out of scope. Hosted content types (PDF, Images, Video, Social Media, and App landing pages) are dropped with them, because they require a server that phones can reach. |
 | D6 | Uploaded logos are stored as normalized PNG blobs in SQLite rather than as files in an `assets/` folder. A backup is then one file, and no user-supplied path is ever touched. |
 | D7 | PDF and EPS are written by hand from the shared vector scene, with no PDF library. They use real gradients (PDF shadings and PostScript `shfill`) and vector text outlines. |
+| D8 | Bulk CSV column mapping uses `header=field` pairs (`--map`, a form field, or an API field) instead of a separate `mapping.toml` file, so no TOML dependency is needed. |
+| D9 | The REST API uses a bearer token from Settings rather than the web UI's form token, so scripts can call it while web pages on other sites cannot. |
 
 ## 16. Open questions
 
