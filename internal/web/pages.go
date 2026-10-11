@@ -9,6 +9,7 @@ import (
 
 	"github.com/Henk476/qr-generator/internal/encode"
 	"github.com/Henk476/qr-generator/internal/generate"
+	"github.com/Henk476/qr-generator/internal/i18n"
 	"github.com/Henk476/qr-generator/internal/matrix"
 	"github.com/Henk476/qr-generator/internal/render"
 	"github.com/Henk476/qr-generator/internal/store"
@@ -16,10 +17,11 @@ import (
 
 // Setting keys.
 const (
-	settingTheme  = "theme"          // "", "light" or "dark"
-	settingFormat = "default_format" // png or svg
-	settingSize   = "default_size"   // px
-	settingECC    = "default_ecc"    // L, M, Q or H
+	settingTheme    = "theme"          // "", "light" or "dark"
+	settingFormat   = "default_format" // png or svg
+	settingSize     = "default_size"   // px
+	settingECC      = "default_ecc"    // L, M, Q or H
+	settingLanguage = "language"       // "" (browser) or an i18n language code
 )
 
 // ---- Library ----
@@ -61,9 +63,9 @@ func (s *Server) handleLibrary(w http.ResponseWriter, r *http.Request) {
 	d.Total = len(all)
 	switch {
 	case q.Has("deleted"):
-		d.Flash = "Code deleted."
+		d.Flash = s.tr(r, "Code deleted.")
 	case q.Has("duplicated"):
-		d.Flash = "Code duplicated."
+		d.Flash = s.tr(r, "Code duplicated.")
 	}
 	s.render(w, http.StatusOK, "library", d)
 }
@@ -160,7 +162,7 @@ func (s *Server) handlePresets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Query().Has("deleted") {
-		d.Flash = "Preset deleted."
+		d.Flash = s.tr(r, "Preset deleted.")
 	}
 	s.render(w, http.StatusOK, "presets", d)
 }
@@ -208,15 +210,20 @@ func (s *Server) handlePresetDelete(w http.ResponseWriter, r *http.Request) {
 
 type settingsData struct {
 	page
-	APIToken string
-	Format   string
-	Size     int
-	ECC      string
-	Levels   []string
+	APIToken        string
+	LanguageSetting string
+	Langs           []i18n.Lang
+	Formats         []render.Option
+	Format          string
+	Size            int
+	ECC             string
+	Levels          []string
 }
 
 func (s *Server) settingsPage(r *http.Request) settingsData {
-	d := settingsData{page: s.newPage(r, "Settings", "settings"), Levels: []string{"L", "M", "Q", "H"}, APIToken: s.APIToken()}
+	d := settingsData{page: s.newPage(r, "Settings", "settings"), Levels: []string{"L", "M", "Q", "H"}, APIToken: s.APIToken(),
+		Langs: i18n.Langs, Formats: s.options.Formats}
+	d.LanguageSetting, _ = s.store.GetSetting(r.Context(), settingLanguage, "")
 	design, e := s.defaults(r)
 	d.Format, d.Size, d.ECC = e.Format, e.Size, design.ECC
 	return d
@@ -227,19 +234,20 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	switch {
 	case q.Has("saved"):
-		d.Flash = "Settings saved."
+		d.Flash = s.tr(r, "Settings saved.")
 	case q.Has("token"):
-		d.Flash = "New API token created. Clients using the old token must be updated."
+		d.Flash = s.tr(r, "New API token created. Clients using the old token must be updated.")
 	case q.Has("restored"):
 		var codes, presets, logos int
 		fmt.Sscanf(q.Get("restored"), "%d,%d,%d", &codes, &presets, &logos)
-		d.Flash = fmt.Sprintf("Backup restored: %d codes, %d presets and %d logos.", codes, presets, logos)
+		d.Flash = s.trf(r, "Backup restored: %d codes, %d presets and %d logos.", codes, presets, logos)
 	}
 	s.render(w, http.StatusOK, "settings", d)
 }
 
 func (s *Server) handleSettingsPost(w http.ResponseWriter, r *http.Request) {
 	theme := r.PostFormValue("theme")
+	language := r.PostFormValue("language")
 	format, ferr := render.ParseFormat(r.PostFormValue("format"))
 	size, serr := strconv.Atoi(r.PostFormValue("size"))
 	_, eerr := matrix.ParseLevel(r.PostFormValue("ecc"))
@@ -247,11 +255,13 @@ func (s *Server) handleSettingsPost(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	switch {
 	case theme != "" && theme != "light" && theme != "dark":
-		msg = "Unknown theme."
+		msg = s.tr(r, "Unknown theme.")
+	case language != "" && !i18n.Supported(language):
+		msg = s.tr(r, "Unknown language.")
 	case ferr != nil:
 		msg = ferr.Error()
 	case serr != nil || size < render.MinSize || size > render.MaxSize:
-		msg = "Size must be a number from " + strconv.Itoa(render.MinSize) + " to " + strconv.Itoa(render.MaxSize) + "."
+		msg = s.trf(r, "Size must be a number from %d to %d.", render.MinSize, render.MaxSize)
 	case eerr != nil:
 		msg = eerr.Error()
 	}
@@ -263,10 +273,11 @@ func (s *Server) handleSettingsPost(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	for k, v := range map[string]string{
-		settingTheme:  theme,
-		settingFormat: string(format),
-		settingSize:   strconv.Itoa(size),
-		settingECC:    r.PostFormValue("ecc"),
+		settingTheme:    theme,
+		settingLanguage: language,
+		settingFormat:   string(format),
+		settingSize:     strconv.Itoa(size),
+		settingECC:      r.PostFormValue("ecc"),
 	} {
 		if err := s.store.SetSetting(ctx, k, v); err != nil {
 			s.serverError(w, err)

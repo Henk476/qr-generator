@@ -12,6 +12,7 @@ import (
 
 	"github.com/Henk476/qr-generator/internal/encode"
 	"github.com/Henk476/qr-generator/internal/generate"
+	"github.com/Henk476/qr-generator/internal/i18n"
 	"github.com/Henk476/qr-generator/internal/logo"
 	"github.com/Henk476/qr-generator/internal/render"
 	"github.com/Henk476/qr-generator/internal/store"
@@ -193,7 +194,7 @@ func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Values, d.Name, d.Tags, d.Design = c.Fields, c.Name, strings.Join(c.Tags, ", "), c.Design
 	if r.URL.Query().Has("saved") {
-		d.Flash = "Saved to your library."
+		d.Flash = s.tr(r, "Saved to your library.")
 	}
 	d.Preview = s.makePreview(r, d)
 	s.render(w, http.StatusOK, "editor", d)
@@ -288,8 +289,14 @@ func (s *Server) makePreview(r *http.Request, d *editorData) preview {
 	// as re-encoded PNG data, never as user markup.
 	p.SVG = template.HTML(buf.String())
 	rep := code.Verify(d.Export.checkPx())
-	p.Warnings, p.OK = rep.Warnings, rep.OK()
-	p.Summary, p.Bytes, p.Notes = code.Summary(), len(code.Payload), rep.Notes
+	p.OK = rep.OK()
+	for _, is := range rep.Issues {
+		p.Warnings = append(p.Warnings, i18n.Tf(d.Lang, is.Format, is.Args...))
+	}
+	for _, n := range rep.Notes {
+		p.Notes = append(p.Notes, i18n.T(d.Lang, n))
+	}
+	p.Summary, p.Bytes = code.Summary(), len(code.Payload)
 	return p
 }
 
@@ -301,7 +308,7 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 	}
 	readForm(r, d)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.pages["preview"].ExecuteTemplate(w, "preview", s.makePreview(r, d)); err != nil {
+	if err := s.pages[d.Lang]["preview"].ExecuteTemplate(w, "preview", s.makePreview(r, d)); err != nil {
 		s.serverError(w, err)
 	}
 }
@@ -345,22 +352,22 @@ func (s *Server) handleEditorPost(w http.ResponseWriter, r *http.Request) {
 			invalid(err.Error())
 			break
 		}
-		d.Design.Logo, d.Flash = "asset:"+id, "Logo uploaded."
+		d.Design.Logo, d.Flash = "asset:"+id, s.tr(r, "Logo uploaded.")
 
 	case action == "save-preset":
 		name := strings.TrimSpace(r.PostFormValue("preset_name"))
 		switch err := d.Design.Validate(); {
 		case name == "":
-			invalid("Give the preset a name.")
+			invalid(s.tr(r, "Give the preset a name."))
 		case err != nil:
-			invalid("Cannot save preset: " + err.Error())
+			invalid(s.tr(r, "Cannot save preset:") + " " + err.Error())
 		default:
 			p := &store.Preset{Name: name, Design: d.Design}
 			if err := s.store.CreatePreset(ctx, p); err != nil {
 				s.serverError(w, err)
 				return
 			}
-			d.Preset, d.Flash = p.ID, fmt.Sprintf("Preset %q saved.", name)
+			d.Preset, d.Flash = p.ID, s.trf(r, "Preset %q saved.", name)
 			if d.Presets, err = s.store.ListPresets(ctx); err != nil {
 				s.serverError(w, err)
 				return
@@ -377,7 +384,7 @@ func (s *Server) handleEditorPost(w http.ResponseWriter, r *http.Request) {
 	case action == "save", action == "save-new":
 		req := s.request(r, d)
 		if _, err := generate.Prepare(req); err != nil {
-			invalid("Cannot save: " + err.Error())
+			invalid(s.tr(r, "Cannot save:") + " " + err.Error())
 			break
 		}
 		c := &store.Code{

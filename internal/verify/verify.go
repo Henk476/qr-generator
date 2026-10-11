@@ -36,8 +36,16 @@ type Report struct {
 	Match    bool    // the decoded text equals the payload
 	Contrast float64 // WCAG contrast ratio between foreground and background
 	Warnings []string
+	// Issues holds the same warnings unformatted, so a UI can translate them.
+	Issues []Issue
 	// Notes are informational, e.g. that a format cannot be decode-checked.
 	Notes []string
+}
+
+// Issue is a warning as an English format string and its arguments.
+type Issue struct {
+	Format string
+	Args   []any
 }
 
 // OK reports whether the check produced no warnings.
@@ -47,7 +55,10 @@ func (r Report) OK() bool { return len(r.Warnings) == 0 }
 // will be exported at, used to warn about modules that are too small.
 func Check(payload string, sc *render.Scene, outputPx int) Report {
 	var r Report
-	warn := func(format string, a ...any) { r.Warnings = append(r.Warnings, fmt.Sprintf(format, a...)) }
+	warn := func(format string, a ...any) {
+		r.Warnings = append(r.Warnings, fmt.Sprintf(format, a...))
+		r.Issues = append(r.Issues, Issue{Format: format, Args: a})
+	}
 
 	width := int(math.Ceil(min(sc.Width*decodePxPerModule, maxDecodeWidth)))
 	text, err := DecodeAs(sc.Symbology, onWhite(render.Rasterize(sc, width)))

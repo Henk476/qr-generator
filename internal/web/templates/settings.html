@@ -1,70 +1,76 @@
 {{define "settings"}}{{template "head" .}}
 <div class="page-head">
-  <h1>Settings</h1>
+  <h1>{{t "Settings"}}</h1>
 </div>
 <form class="panel" method="post" action="/settings">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   <fieldset>
-    <legend>Appearance</legend>
+    <legend>{{t "Appearance"}}</legend>
     <div class="field">
-      <label for="theme">Theme</label>
+      <label for="language">{{t "Language"}}</label>
+      <select id="language" name="language">
+        <option value=""{{if eq .LanguageSetting ""}} selected{{end}}>{{t "Match browser"}}</option>
+        {{range .Langs}}<option value="{{.Code}}" lang="{{.Code}}"{{if eq .Code $.LanguageSetting}} selected{{end}}>{{.Name}}</option>{{end}}
+      </select>
+    </div>
+    <div class="field">
+      <label for="theme">{{t "Theme"}}</label>
       <select id="theme" name="theme">
-        <option value=""{{if eq .Theme ""}} selected{{end}}>Match system</option>
-        <option value="light"{{if eq .Theme "light"}} selected{{end}}>Light</option>
-        <option value="dark"{{if eq .Theme "dark"}} selected{{end}}>Dark</option>
+        <option value=""{{if eq .Theme ""}} selected{{end}}>{{t "Match system"}}</option>
+        <option value="light"{{if eq .Theme "light"}} selected{{end}}>{{t "Light"}}</option>
+        <option value="dark"{{if eq .Theme "dark"}} selected{{end}}>{{t "Dark"}}</option>
       </select>
     </div>
   </fieldset>
   <fieldset>
-    <legend>Defaults for new codes</legend>
+    <legend>{{t "Defaults for new codes"}}</legend>
     <div class="field">
-      <label for="format">Download format</label>
+      <label for="format">{{t "Download format"}}</label>
       <select id="format" name="format">
-        <option value="png"{{if eq .Format "png"}} selected{{end}}>PNG</option>
-        <option value="svg"{{if eq .Format "svg"}} selected{{end}}>SVG</option>
+        {{range .Formats}}<option value="{{.Value}}"{{if eq .Value $.Format}} selected{{end}}>{{t .Label}}</option>{{end}}
       </select>
     </div>
     <div class="field">
-      <label for="size">Download size (px)</label>
+      <label for="size">{{t "Download size (px)"}}</label>
       <input id="size" name="size" type="number" min="128" max="4096" value="{{.Size}}">
     </div>
     <div class="field">
-      <label for="ecc">Error correction</label>
+      <label for="ecc">{{t "Error correction"}}</label>
       <select id="ecc" name="ecc">
         {{range .Levels}}<option value="{{.}}"{{if eq . $.ECC}} selected{{end}}>{{.}}</option>{{end}}
       </select>
     </div>
   </fieldset>
-  <div class="actions"><button class="btn btn-primary" type="submit">Save settings</button></div>
+  <div class="actions"><button class="btn btn-primary" type="submit">{{t "Save settings"}}</button></div>
 </form>
 
 <section class="panel">
-  <h2>API</h2>
-  <p>Scripts and other programs can use the local REST API at <code>/api/v1</code>. Send this token as <code>Authorization: Bearer &lt;token&gt;</code>. The full description is at <a href="/api/v1/openapi.json">/api/v1/openapi.json</a>.</p>
+  <h2>{{t "API"}}</h2>
+  <p>{{t "Scripts and other programs can use the local REST API at /api/v1. Send this token in an Authorization: Bearer header. The full description is at /api/v1/openapi.json."}}</p>
   <div class="field">
-    <label for="api_token">API token</label>
+    <label for="api_token">{{t "API token"}}</label>
     <input id="api_token" type="text" readonly value="{{.APIToken}}" spellcheck="false" class="mono">
   </div>
-  <form method="post" action="/settings/api-token" data-confirm="Create a new token? Programs using the current token will stop working until you update them.">
+  <form method="post" action="/settings/api-token" data-confirm="{{t "Create a new token? Programs using the current token will stop working until you update them."}}">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <div class="actions"><button class="btn" type="submit">Create new token</button></div>
+    <div class="actions"><button class="btn" type="submit">{{t "Create new token"}}</button> <a class="btn" href="/api/v1/openapi.json">openapi.json</a></div>
   </form>
 </section>
 
 <section class="panel">
-  <h2>Backup</h2>
-  <p>Download your library, presets, uploaded logos and settings as one file.</p>
-  <a class="btn" href="/backup">Download backup</a>
+  <h2>{{t "Backup"}}</h2>
+  <p>{{t "Download your library, presets, uploaded logos and settings as one file."}}</p>
+  <a class="btn" href="/backup">{{t "Download backup"}}</a>
 </section>
 
-<form class="panel" method="post" action="/restore" enctype="multipart/form-data" data-confirm="Replace your library, presets, logos and settings with this backup? This cannot be undone.">
+<form class="panel" method="post" action="/restore" enctype="multipart/form-data" data-confirm="{{t "Replace your library, presets, logos and settings with this backup? This cannot be undone."}}">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
-  <h2>Restore</h2>
-  <p>Replaces everything in your library, your own presets, logos and settings with the contents of a backup.</p>
+  <h2>{{t "Restore"}}</h2>
+  <p>{{t "Replaces everything in your library, your own presets, logos and settings with the contents of a backup."}}</p>
   <div class="field">
-    <label for="backup_file">Backup file</label>
+    <label for="backup_file">{{t "Backup file"}}</label>
     <input id="backup_file" name="backup_file" type="file" accept=".zip,application/zip" required>
   </div>
-  <div class="actions"><button class="btn btn-danger" type="submit">Restore</button></div>
+  <div class="actions"><button class="btn btn-danger" type="submit">{{t "Restore"}}</button></div>
 </form>
 {{template "foot" .}}{{end}}

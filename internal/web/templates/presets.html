@@ -1,19 +1,19 @@
 {{define "presets"}}{{template "head" .}}
 <div class="page-head">
-  <h1>Presets</h1>
+  <h1>{{t "Presets"}}</h1>
 </div>
-<p class="lede">A preset saves colors and error correction so you can reuse a look. Save your own from the Design step of any code.</p>
+<p class="lede">{{t "A preset saves a complete look (colors, shapes, logo and frame) so you can reuse it. Save your own from the Design step of any code."}}</p>
 <ul class="cards cards-small">
   {{range .Presets}}
   <li class="card">
     <a class="thumb{{if eq .Design.Background "transparent"}} checker{{end}}" href="/new?preset={{.ID}}"><img src="/presets/{{.ID}}/image" alt="" loading="lazy" width="128" height="128"></a>
     <div class="card-body">
-      <h2>{{.Name}}</h2>
-      <p class="meta">{{if .Builtin}}Built-in{{else}}Yours{{end}} · ECC {{.Design.ECC}}</p>
+      <h2>{{if .Builtin}}{{t .Name}}{{else}}{{.Name}}{{end}}</h2>
+      <p class="meta">{{if .Builtin}}{{t "Built-in"}}{{else}}{{t "Yours"}}{{end}} · ECC {{.Design.ECC}}</p>
       <div class="card-actions">
-        <a class="btn btn-small" href="/new?preset={{.ID}}">Use</a>
+        <a class="btn btn-small" href="/new?preset={{.ID}}">{{t "Use"}}</a>
         {{if not .Builtin}}
-        <form method="post" action="/presets/{{.ID}}/delete" data-confirm="Delete the preset “{{.Name}}”?"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn btn-small btn-danger" type="submit">Delete</button></form>
+        <form method="post" action="/presets/{{.ID}}/delete" data-confirm="{{tf "Delete the preset “%s”?" .Name}}"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn btn-small btn-danger" type="submit">{{t "Delete"}}</button></form>
         {{end}}
       </div>
     </div>

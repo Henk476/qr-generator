@@ -97,9 +97,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!res.ok || !type.startsWith("image/png")) throw new Error("not an image");
       const blob = await res.blob();
       await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      copy.textContent = "Copied";
+      copy.textContent = copy.dataset.done || "Copied";
     } catch {
-      copy.textContent = "Copy failed";
+      copy.textContent = copy.dataset.failed || "Copy failed";
     }
     setTimeout(() => { copy.textContent = label; }, 1500);
   });

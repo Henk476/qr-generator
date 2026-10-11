@@ -85,7 +85,7 @@ func (s *Server) handleBulkPost(w http.ResponseWriter, r *http.Request) {
 	if f.Preset != "" {
 		p, err := s.store.GetPreset(ctx, f.Preset)
 		if err != nil {
-			fail("Choose a preset.")
+			fail(s.tr(r, "Choose a preset."))
 			return
 		}
 		design = p.Design
@@ -97,7 +97,7 @@ func (s *Server) handleBulkPost(w http.ResponseWriter, r *http.Request) {
 	}
 	file, _, err := r.FormFile("csv_file")
 	if err != nil {
-		fail("Choose a CSV file.")
+		fail(s.tr(r, "Choose a CSV file."))
 		return
 	}
 	defer file.Close()
@@ -161,7 +161,7 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 	}
 	file, hdr, err := r.FormFile("backup_file")
 	if err != nil {
-		fail("Choose a backup file.")
+		fail(s.tr(r, "Choose a backup file."))
 		return
 	}
 	defer file.Close()
@@ -171,12 +171,12 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(data) > maxRestoreBytes || hdr.Size > maxRestoreBytes {
-		fail("That backup is too large.")
+		fail(s.tr(r, "That backup is too large."))
 		return
 	}
 	stats, err := s.store.Restore(r.Context(), bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		fail("Restore failed: " + err.Error())
+		fail(s.tr(r, "Restore failed:") + " " + err.Error())
 		return
 	}
 	// Restored logos may reuse IDs with different content.

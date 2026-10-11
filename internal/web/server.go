@@ -20,6 +20,7 @@ import (
 
 	"github.com/Henk476/qr-generator/internal/api"
 	"github.com/Henk476/qr-generator/internal/encode"
+	"github.com/Henk476/qr-generator/internal/i18n"
 	"github.com/Henk476/qr-generator/internal/logo"
 	"github.com/Henk476/qr-generator/internal/store"
 )
@@ -43,7 +44,7 @@ type Options struct {
 type Server struct {
 	store     *store.Store
 	opts      Options
-	pages     map[string]*template.Template
+	pages     map[string]map[string]*template.Template // language -> page -> template
 	csrf      string
 	options   *designOptions
 	apiToken  atomic.Pointer[string]
@@ -168,6 +169,7 @@ func (s *Server) secure(next http.Handler) http.Handler {
 
 // page is the data every template receives.
 type page struct {
+	Lang    string // UI language code
 	Title   string
 	Nav     string // active nav item
 	CSRF    string
@@ -179,11 +181,33 @@ type page struct {
 
 func (s *Server) newPage(r *http.Request, title, nav string) page {
 	theme, _ := s.store.GetSetting(r.Context(), settingTheme, "")
-	return page{Title: title, Nav: nav, CSRF: s.csrf, Theme: theme, Version: s.opts.Version}
+	return page{Lang: s.lang(r), Title: title, Nav: nav, CSRF: s.csrf, Theme: theme, Version: s.opts.Version}
+}
+
+func (p page) language() string { return p.Lang }
+
+// lang is the UI language: the saved setting, else the browser's preference.
+func (s *Server) lang(r *http.Request) string {
+	if l, _ := s.store.GetSetting(r.Context(), settingLanguage, ""); i18n.Supported(l) {
+		return l
+	}
+	return i18n.Match(r.Header.Get("Accept-Language"))
+}
+
+// tr translates a message into the request's language.
+func (s *Server) tr(r *http.Request, msg string) string { return i18n.T(s.lang(r), msg) }
+
+// trf translates a format string into the request's language and formats it.
+func (s *Server) trf(r *http.Request, format string, a ...any) string {
+	return i18n.Tf(s.lang(r), format, a...)
 }
 
 func (s *Server) render(w http.ResponseWriter, status int, name string, data any) {
-	t, ok := s.pages[name]
+	lang := "en"
+	if l, ok := data.(interface{ language() string }); ok && i18n.Supported(l.language()) {
+		lang = l.language()
+	}
+	t, ok := s.pages[lang][name]
 	if !ok {
 		panic("web: unknown template " + name)
 	}
@@ -225,9 +249,26 @@ var funcs = template.FuncMap{
 	},
 }
 
-// parsePages parses each page template together with the shared layout.
-func parsePages() (map[string]*template.Template, error) {
-	base, err := template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/preview.html")
+// parsePages parses every page with the shared layout, once per language,
+// each set with its own translating "t" and "tf" functions.
+func parsePages() (map[string]map[string]*template.Template, error) {
+	out := map[string]map[string]*template.Template{}
+	for _, l := range i18n.Langs {
+		pages, err := parseLang(l.Code)
+		if err != nil {
+			return nil, err
+		}
+		out[l.Code] = pages
+	}
+	return out, nil
+}
+
+func parseLang(lang string) (map[string]*template.Template, error) {
+	tr := template.FuncMap{
+		"t":  func(s string) string { return i18n.T(lang, s) },
+		"tf": func(format string, a ...any) string { return i18n.Tf(lang, format, a...) },
+	}
+	base, err := template.New("").Funcs(funcs).Funcs(tr).ParseFS(templateFS, "templates/layout.html", "templates/preview.html")
 	if err != nil {
 		return nil, err
 	}
