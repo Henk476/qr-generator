@@ -1,0 +1,9 @@
+# Build output
+/canute-qr
+/canute-qr.exe
+/dist/
+
+# Generated codes from local testing
+*.png
+*.svg
+!internal/**/testdata/**

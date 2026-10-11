@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | Draft v0.2 |
 | **Date** | 2026-10-11 |
-| **Language** | Go (1.23+) |
+| **Language** | Go (1.26+) |
 | **Feature reference** | [qr.io](https://qr.io/) (static-code feature set) |
 
 ---
