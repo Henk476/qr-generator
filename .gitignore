@@ -1,0 +1,14 @@
+# Build output
+/canute-qr
+/canute-qr.exe
+/dist/
+
+# Generated codes from local testing
+*.png
+*.svg
+!internal/**/testdata/**
+!internal/web/static/**
+
+# Local preview config (machine-specific paths)
+/.claude/launch.json
+

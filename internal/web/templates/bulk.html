@@ -1,0 +1,72 @@
+{{define "bulk"}}{{template "head" .}}
+<div class="page-head">
+  <h1>{{t "Bulk"}}</h1>
+</div>
+<p class="lede">{{t "Create many codes at once from a CSV file. You get a ZIP with one image per row and a report.csv that lists any rows that failed."}}</p>
+
+<form class="panel panel-wide" method="post" action="/bulk" enctype="multipart/form-data">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <fieldset>
+    <legend>{{t "1. Your CSV"}}</legend>
+    <div class="field">
+      <label for="csv_file">{{t "CSV file (UTF-8, first row is the header)"}}</label>
+      <input id="csv_file" name="csv_file" type="file" accept=".csv,text/csv" required>
+    </div>
+    <details class="help">
+      <summary>{{t "How to lay out the CSV"}}</summary>
+      <p>{{t "Name the columns after the content fields. Two extra columns are optional: type (the content type of each row) and name (the image file name)."}}</p>
+<pre>type,name,url,ssid,password
+url,Shop,example.com/shop,,
+wifi,Guest Wi-Fi,,Guest,secret</pre>
+      <p>{{t "Fields by type:"}}</p>
+      <ul class="field-list">
+        {{range .Types}}<li><strong>{{.Name}}</strong>: {{range $i, $f := .Fields}}{{if $i}}, {{end}}{{$f.Name}}{{end}}</li>{{end}}
+      </ul>
+    </details>
+    <div class="field">
+      <label for="type">{{t "Type for rows without a type column"}}</label>
+      <select id="type" name="type">
+        {{range .Types}}<option value="{{.Name}}"{{if eq .Name $.Form.Type}} selected{{end}}>{{t .Title}}</option>{{end}}
+      </select>
+    </div>
+    <div class="field">
+      <label for="map">{{t "Rename columns (optional)"}}</label>
+      <input id="map" name="map" type="text" value="{{.Form.Map}}" placeholder="Website=url, Network=ssid">
+      <small class="hint">{{t "For a CSV whose headers do not match the field names."}}</small>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>{{t "2. Look"}}</legend>
+    <div class="field">
+      <label for="preset">{{t "Preset"}}</label>
+      <select id="preset" name="preset">
+        {{range .Presets}}<option value="{{.ID}}"{{if eq .ID $.Form.Preset}} selected{{end}}>{{if .Builtin}}{{t .Name}}{{else}}{{.Name}} ({{t "yours"}}){{end}}</option>{{end}}
+      </select>
+      <small class="hint">{{t "Save your own design as a preset in the editor to use it here."}}</small>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>{{t "3. Output"}}</legend>
+    <div class="field">
+      <label for="format">{{t "Format"}}</label>
+      <select id="format" name="format">
+        {{range .Opts.Formats}}<option value="{{.Value}}"{{if eq .Value $.Form.Format}} selected{{end}}>{{t .Label}}</option>{{end}}
+      </select>
+    </div>
+    <div class="field">
+      <label for="size">{{t "Size (px, for PNG, JPEG and SVG)"}}</label>
+      <input id="size" name="size" type="number" min="128" max="4096" value="{{.Form.Size}}">
+    </div>
+    <div class="field">
+      <label for="print_mm">{{t "Printed width (mm, for PDF and EPS)"}}</label>
+      <input id="print_mm" name="print_mm" type="number" min="10" max="1000" step="any" value="{{.Form.PrintMM}}">
+    </div>
+    <label class="check"><input type="checkbox" name="save" value="1"{{if .Form.Save}} checked{{end}}> {{t "Also save the codes to the library"}}</label>
+    <div class="field">
+      <label for="tags">{{t "Tags for saved codes"}}</label>
+      <input id="tags" name="tags" type="text" value="{{.Form.Tags}}" placeholder="{{t "event, 2026"}}">
+    </div>
+  </fieldset>
+  <div class="actions"><button class="btn btn-primary" type="submit">{{t "Create ZIP"}}</button></div>
+</form>
+{{template "foot" .}}{{end}}

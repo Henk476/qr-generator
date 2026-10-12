@@ -1,0 +1,3 @@
+# Binary assets: never convert line endings
+*.ttf binary
+*.png binary

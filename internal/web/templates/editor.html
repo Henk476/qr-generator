@@ -1,0 +1,265 @@
+{{define "editor"}}{{template "head" .}}
+<form id="editor" class="editor" method="post" action="{{.Action}}" enctype="multipart/form-data" novalidate>
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="type" value="{{.Type.Name}}">
+  {{/* First submit button = what Enter in a text field triggers. */}}
+  <button type="submit" name="action" value="preview" class="sr-only" tabindex="-1" aria-hidden="true">{{t "Update preview"}}</button>
+
+  <div class="steps">
+    <section class="step" aria-labelledby="step1">
+      <h2 id="step1"><span class="num">1</span> {{t "Content"}}</h2>
+      <div class="type-tabs" role="group" aria-label="{{t "Content type"}}">
+        {{range .Types}}<button type="submit" name="action" value="type:{{.Name}}" class="tab"{{if eq .Name $.Type.Name}} aria-pressed="true"{{else}} aria-pressed="false"{{end}}>{{t .Title}}</button>{{end}}
+      </div>
+      <div class="fields">
+      {{range .Type.Fields}}{{$v := index $.Values .Name}}
+        {{if eq .InputKind "checkbox"}}
+        <div class="field field-check">
+          <label><input type="checkbox" name="f.{{.Name}}" value="true"{{if eq $v "true"}} checked{{end}}> {{t .Label}}</label>
+        </div>
+        {{else}}
+        <div class="field{{if eq .InputKind "textarea"}} field-wide{{end}}">
+          <label for="f-{{.Name}}">{{t .Label}}{{if .Required}} <span class="req" aria-hidden="true">*</span>{{end}}</label>
+          {{if eq .InputKind "textarea"}}
+          <textarea id="f-{{.Name}}" name="f.{{.Name}}" rows="3" placeholder="{{.Placeholder}}">{{$v}}</textarea>
+          {{else if eq .InputKind "select"}}
+          <select id="f-{{.Name}}" name="f.{{.Name}}">
+            {{if not .Required}}<option value="">{{t "Automatic"}}</option>{{end}}
+            {{range .Options}}<option value="{{.}}"{{if eq . $v}} selected{{end}}>{{.}}</option>{{end}}
+          </select>
+          {{else}}
+          <input id="f-{{.Name}}" name="f.{{.Name}}" value="{{$v}}" placeholder="{{.Placeholder}}"
+            {{if eq .InputKind "email"}}type="email" autocomplete="off"{{else if eq .InputKind "tel"}}type="tel"{{else if eq .InputKind "url"}}type="text" inputmode="url" spellcheck="false"{{else}}type="text"{{end}}>
+          {{end}}
+          {{with hint .}}<small class="hint">{{t .}}</small>{{end}}
+        </div>
+        {{end}}
+      {{end}}
+      </div>
+    </section>
+
+    <section class="step" aria-labelledby="step2">
+      <h2 id="step2"><span class="num">2</span> {{t "Design"}}</h2>
+
+      <div class="field">
+        <label for="preset">{{t "Start from a preset"}}</label>
+        <div class="inline">
+          <select id="preset" name="preset" data-autosubmit="apply-preset">
+            <option value="">{{t "Choose a preset…"}}</option>
+            {{range .Presets}}<option value="{{.ID}}"{{if eq .ID $.Preset}} selected{{end}}>{{t .Name}}{{if not .Builtin}} ({{t "yours"}}){{end}}</option>{{end}}
+          </select>
+          <button type="submit" name="action" value="apply-preset" class="btn js-hide" id="apply-preset">{{t "Apply"}}</button>
+        </div>
+      </div>
+
+      <fieldset class="group">
+        <legend>{{t "Colors"}}</legend>
+        <div class="fields">
+          <div class="field">
+            <label for="fg">{{t "Foreground"}}</label>
+            <input id="fg" name="fg" type="color" value="{{.FgHex}}">
+          </div>
+          <div class="field">
+            <label for="bg">{{t "Background"}}</label>
+            <input id="bg" name="bg" type="color" value="{{.BgHex}}">
+            <label class="check"><input type="checkbox" name="bg_transparent" value="1"{{if .Transparent}} checked{{end}}> {{t "Transparent"}}</label>
+          </div>
+          <div class="field">
+            <label for="gradient">{{t "Gradient"}}</label>
+            <select id="gradient" name="gradient">
+              <option value=""{{if eq .Design.Gradient ""}} selected{{end}}>{{t "None"}}</option>
+              <option value="linear"{{if eq .Design.Gradient "linear"}} selected{{end}}>{{t "Linear"}}</option>
+              <option value="radial"{{if eq .Design.Gradient "radial"}} selected{{end}}>{{t "Radial"}}</option>
+            </select>
+          </div>
+          <div class="field" data-when="gradient" data-is="*">
+            <label for="fg2">{{t "Gradient end"}}</label>
+            <input id="fg2" name="fg2" type="color" value="{{.Fg2Hex}}">
+          </div>
+          <div class="field" data-when="gradient" data-is="linear">
+            <label for="gradient_angle">{{t "Angle"}} <output for="gradient_angle" data-mirror="gradient_angle">{{.Design.GradientAngle}}</output>°</label>
+            <input id="gradient_angle" name="gradient_angle" type="range" min="0" max="359" step="15" value="{{.Design.GradientAngle}}">
+          </div>
+        </div>
+      </fieldset>
+
+      {{if eq .Type.Name "barcode"}}
+      <p class="hint">{{t "Barcodes use colors and the quiet zone; shapes, logos and frames are QR features."}}</p>
+      {{else}}
+      <fieldset class="group">
+        <legend>{{t "Module shape"}}</legend>
+        <div class="swatches">
+          {{range .Opts.Modules}}<label class="swatch" title="{{t .Label}}"><input type="radio" name="module" value="{{.Value}}"{{if eq .Value $.ModuleValue}} checked{{end}}><span class="swatch-img">{{.SVG}}</span><span class="swatch-label">{{t .Label}}</span></label>{{end}}
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>{{t "Corner squares"}}</legend>
+        <p class="sublabel">{{t "Border"}}</p>
+        <div class="swatches">
+          {{range .Opts.EyeOuters}}<label class="swatch" title="{{t .Label}}"><input type="radio" name="eye_outer" value="{{.Value}}"{{if eq .Value $.EyeOuterValue}} checked{{end}}><span class="swatch-img">{{.SVG}}</span><span class="swatch-label">{{t .Label}}</span></label>{{end}}
+        </div>
+        <p class="sublabel">{{t "Center"}}</p>
+        <div class="swatches">
+          {{range .Opts.EyeInners}}<label class="swatch" title="{{t .Label}}"><input type="radio" name="eye_inner" value="{{.Value}}"{{if eq .Value $.EyeInnerValue}} checked{{end}}><span class="swatch-img">{{.SVG}}</span><span class="swatch-label">{{t .Label}}</span></label>{{end}}
+        </div>
+        <div class="fields">
+          <div class="field">
+            <label class="check"><input type="checkbox" name="eye_outer_custom" value="1"{{if .Design.EyeOuterColor}} checked{{end}}> {{t "Own border color"}}</label>
+            <input name="eye_outer_color" type="color" value="{{.EyeOuterHex}}" aria-label="{{t "Border color"}}" data-when="eye_outer_custom" data-is="*">
+          </div>
+          <div class="field">
+            <label class="check"><input type="checkbox" name="eye_inner_custom" value="1"{{if .Design.EyeInnerColor}} checked{{end}}> {{t "Own center color"}}</label>
+            <input name="eye_inner_color" type="color" value="{{.EyeInnerHex}}" aria-label="{{t "Center color"}}" data-when="eye_inner_custom" data-is="*">
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>{{t "Logo"}}</legend>
+        <div class="swatches">
+          <label class="swatch" title="{{t "No logo"}}"><input type="radio" name="logo" value=""{{if eq .Design.Logo ""}} checked{{end}}><span class="swatch-img swatch-none">{{t "None"}}</span><span class="swatch-label">{{t "None"}}</span></label>
+          {{if .UploadedLogo}}<label class="swatch" title="{{t "Your uploaded image"}}"><input type="radio" name="logo" value="{{.Design.Logo}}" checked><span class="swatch-img swatch-none">{{t "Yours"}}</span><span class="swatch-label">{{t "Uploaded image"}}</span></label>{{end}}
+          {{range .Opts.Icons}}{{$v := print "icon:" .Value}}<label class="swatch" title="{{t .Label}}"><input type="radio" name="logo" value="{{$v}}"{{if eq $v $.Design.Logo}} checked{{end}}><span class="swatch-img">{{.SVG}}</span><span class="swatch-label">{{t .Label}}</span></label>{{end}}
+        </div>
+        <div class="field">
+          <label for="logo_file">{{t "Upload your own (PNG, JPEG or SVG, up to 5 MB)"}}</label>
+          <div class="inline">
+            <input id="logo_file" name="logo_file" type="file" accept="image/png,image/jpeg,image/svg+xml" data-autosubmit="upload-logo" data-nopreview>
+            <button type="submit" name="action" value="upload-logo" class="btn js-hide" id="upload-logo">{{t "Upload"}}</button>
+          </div>
+        </div>
+        <div class="fields" data-when="logo" data-is="*">
+          <div class="field">
+            <label for="logo_size">{{t "Size"}} <output for="logo_size" data-mirror="logo_size">{{.LogoSize}}</output>%</label>
+            <input id="logo_size" name="logo_size" type="range" min="10" max="30" value="{{.LogoSize}}">
+          </div>
+          <div class="field">
+            <label class="check"><input type="checkbox" name="logo_circle" value="1"{{if .Design.LogoCircle}} checked{{end}}> {{t "Round logo"}}</label>
+            <label class="check"><input type="checkbox" name="logo_keep" value="1"{{if .Design.LogoKeepModules}} checked{{end}}> {{t "Keep modules behind the logo"}}</label>
+          </div>
+          <p class="hint field-wide">{{t "Codes with a logo always use the highest error correction (H) so the hidden modules can be recovered."}}</p>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>{{t "Frame"}}</legend>
+        <div class="fields">
+          <div class="field">
+            <label for="frame">{{t "Frame"}}</label>
+            <select id="frame" name="frame">
+              {{range .Opts.Frames}}<option value="{{.Value}}"{{if eq .Value $.Design.Frame}} selected{{end}}>{{t .Label}}</option>{{end}}
+            </select>
+          </div>
+          <div class="field" data-when="frame" data-is="*">
+            <label for="frame_text">{{t "Text"}}</label>
+            <input id="frame_text" name="frame_text" type="text" maxlength="{{.Opts.MaxFrameText}}" value="{{.FrameText}}">
+          </div>
+          <div class="field" data-when="frame" data-is="*">
+            <label for="frame_font">{{t "Font"}}</label>
+            <select id="frame_font" name="frame_font">
+              {{range .Opts.Fonts}}<option value="{{.Value}}"{{if eq .Value $.Design.FrameFont}} selected{{end}}>{{t .Label}}</option>{{end}}
+            </select>
+          </div>
+          <div class="field" data-when="frame" data-is="*">
+            <label for="frame_color">{{t "Frame color"}}</label>
+            <input id="frame_color" name="frame_color" type="color" value="{{.FrameColorHex}}">
+          </div>
+          <div class="field" data-when="frame" data-is="banner-bottom,banner-top,badge,bubble,ticket">
+            <label for="frame_text_color">{{t "Text color"}}</label>
+            <input id="frame_text_color" name="frame_text_color" type="color" value="{{.FrameTextHex}}">
+          </div>
+        </div>
+      </fieldset>
+      {{end}}
+
+      <details class="group">
+        <summary>{{t "Advanced"}}</summary>
+        <div class="fields">
+          <div class="field">
+            <label for="ecc">{{t "Error correction"}}</label>
+            <select id="ecc" name="ecc">
+              <option value="L"{{if eq .Design.ECC "L"}} selected{{end}}>{{t "L: 7%, smallest code"}}</option>
+              <option value="M"{{if eq .Design.ECC "M"}} selected{{end}}>{{t "M: 15%, recommended"}}</option>
+              <option value="Q"{{if eq .Design.ECC "Q"}} selected{{end}}>{{t "Q: 25%"}}</option>
+              <option value="H"{{if eq .Design.ECC "H"}} selected{{end}}>{{t "H: 30%, most robust"}}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="quiet">{{t "Quiet zone"}} <output for="quiet" data-mirror="quiet">{{.Design.QuietZone}}</output></label>
+            <input id="quiet" name="quiet" type="range" min="0" max="10" value="{{.Design.QuietZone}}">
+          </div>
+          <div class="field">
+            <label for="version">{{t "QR version"}}</label>
+            <select id="version" name="version">
+              <option value="0">{{t "Automatic"}}</option>
+              {{range seq 1 40}}<option value="{{.}}"{{if eq . $.Design.Version}} selected{{end}}>{{.}}</option>{{end}}
+            </select>
+          </div>
+        </div>
+      </details>
+
+      <div class="field">
+        <label for="preset_name">{{t "Save this design as a preset"}}</label>
+        <div class="inline">
+          <input id="preset_name" name="preset_name" type="text" placeholder="{{t "Preset name"}}" data-nopreview>
+          <button type="submit" name="action" value="save-preset" class="btn">{{t "Save preset"}}</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="step" aria-labelledby="step3">
+      <h2 id="step3"><span class="num">3</span> {{t "Download"}}</h2>
+      <div class="fields">
+        <div class="field">
+          <label for="format">{{t "Format"}}</label>
+          <select id="format" name="format">
+            {{range .Opts.Formats}}<option value="{{.Value}}"{{if eq .Value $.Export.Format}} selected{{end}}>{{t .Label}}</option>{{end}}
+          </select>
+        </div>
+        <div class="field" data-when="format" data-is="png,jpeg,svg">
+          <label for="size">{{t "Size (px)"}}</label>
+          <input id="size" name="size" type="number" min="128" max="4096" step="1" value="{{.Export.Size}}">
+        </div>
+        <div class="field" data-when="format" data-is="jpeg">
+          <label for="quality">{{t "JPEG quality"}}</label>
+          <input id="quality" name="quality" type="number" min="1" max="100" value="{{.Export.Quality}}">
+        </div>
+        <div class="field" data-when="format" data-is="pdf">
+          <label for="page">{{t "Page"}}</label>
+          <select id="page" name="page">
+            {{range .Opts.Pages}}<option value="{{.Value}}"{{if eq .Value $.Export.Page}} selected{{end}}>{{t .Label}}</option>{{end}}
+          </select>
+        </div>
+        <div class="field" data-when="format" data-is="pdf,eps">
+          <label for="print_mm">{{t "Printed width (mm)"}}</label>
+          <input id="print_mm" name="print_mm" type="number" min="10" max="1000" step="any" value="{{.Export.PrintMM}}">
+        </div>
+        <div class="field">
+          <label for="name">{{t "Name"}}</label>
+          <input id="name" name="name" type="text" value="{{.Name}}" placeholder="{{t "Named automatically"}}" data-nopreview>
+        </div>
+        <div class="field">
+          <label for="tags">{{t "Tags"}}</label>
+          <input id="tags" name="tags" type="text" value="{{.Tags}}" placeholder="{{t "home, print"}}" data-nopreview>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="submit" name="action" value="download" class="btn btn-primary">{{t "Download"}}</button>
+        <button type="button" class="btn js-only" id="copy-png" data-done="{{t "Copied"}}" data-failed="{{t "Copy failed"}}">{{t "Copy image"}}</button>
+        {{if .CodeID}}
+        <button type="submit" name="action" value="save" class="btn">{{t "Save changes"}}</button>
+        <button type="submit" name="action" value="save-new" class="btn">{{t "Save as new"}}</button>
+        {{else}}
+        <button type="submit" name="action" value="save" class="btn">{{t "Save to library"}}</button>
+        {{end}}
+      </div>
+    </section>
+  </div>
+
+  <aside class="preview-pane" aria-label="{{t "Preview"}}">
+    <div id="preview" aria-live="polite">{{template "preview" .Preview}}</div>
+    <button type="submit" name="action" value="preview" class="btn js-hide">{{t "Update preview"}}</button>
+  </aside>
+</form>
+{{template "foot" .}}{{end}}

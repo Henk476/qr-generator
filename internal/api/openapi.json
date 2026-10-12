@@ -1,0 +1,279 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Canute's QR Generator API",
+    "version": "1",
+    "description": "Local REST API for static QR codes and barcodes. Runs on your own machine; nothing is sent anywhere. Every endpoint except this document needs `Authorization: Bearer <token>`, with the token from Settings in the web UI. Errors are returned as `{\"error\": \"message\"}`."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "security": [{ "bearer": [] }],
+  "components": {
+    "securitySchemes": {
+      "bearer": { "type": "http", "scheme": "bearer", "description": "The API token from Settings in the web UI." }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": { "error": { "type": "string" } },
+        "required": ["error"]
+      },
+      "Fields": {
+        "type": "object",
+        "additionalProperties": { "type": "string" },
+        "description": "Content fields for the type, e.g. {\"url\": \"example.com\"} or {\"ssid\": \"Home\", \"password\": \"secret\"}. See GET /types.",
+        "example": { "url": "https://example.com" }
+      },
+      "Design": {
+        "type": "object",
+        "description": "How the code looks. Omitted fields use defaults. See GET /styles for the allowed values.",
+        "properties": {
+          "ecc": { "type": "string", "enum": ["L", "M", "Q", "H"], "default": "M" },
+          "version": { "type": "integer", "minimum": 0, "maximum": 40, "description": "0 = smallest that fits" },
+          "quietZone": { "type": "integer", "minimum": 0, "maximum": 10, "default": 4 },
+          "fg": { "type": "string", "example": "#000000" },
+          "bg": { "type": "string", "example": "#ffffff", "description": "#rrggbb, #rrggbbaa or transparent" },
+          "gradient": { "type": "string", "enum": ["", "linear", "radial"] },
+          "fg2": { "type": "string", "description": "gradient end color" },
+          "gradientAngle": { "type": "integer" },
+          "module": { "type": "string", "example": "dots" },
+          "eyeOuter": { "type": "string", "example": "circle" },
+          "eyeInner": { "type": "string", "example": "circle" },
+          "eyeOuterColor": { "type": "string" },
+          "eyeInnerColor": { "type": "string" },
+          "logo": { "type": "string", "description": "icon:<name> or asset:<id> from POST /assets", "example": "icon:wifi" },
+          "logoSize": { "type": "integer", "minimum": 10, "maximum": 30, "description": "percent of the code width; 0 = 22" },
+          "logoKeepModules": { "type": "boolean" },
+          "logoCircle": { "type": "boolean" },
+          "frame": { "type": "string", "example": "banner-bottom" },
+          "frameText": { "type": "string", "maxLength": 30 },
+          "frameFont": { "type": "string", "enum": ["", "sans", "serif", "mono"] },
+          "frameColor": { "type": "string" },
+          "frameTextColor": { "type": "string" }
+        }
+      },
+      "Export": {
+        "type": "object",
+        "properties": {
+          "format": { "type": "string", "enum": ["png", "jpeg", "svg", "pdf", "eps"], "default": "png" },
+          "size": { "type": "integer", "minimum": 128, "maximum": 4096, "default": 1024, "description": "px, for png, jpeg and svg" },
+          "quality": { "type": "integer", "minimum": 1, "maximum": 100, "default": 90, "description": "JPEG only" },
+          "page": { "type": "string", "enum": ["fit", "a4", "letter"], "default": "fit", "description": "PDF only" },
+          "printMM": { "type": "number", "minimum": 10, "maximum": 1000, "default": 50, "description": "printed width, PDF and EPS" }
+        }
+      },
+      "RenderRequest": {
+        "type": "object",
+        "required": ["type", "fields"],
+        "properties": {
+          "type": { "type": "string", "example": "url" },
+          "fields": { "$ref": "#/components/schemas/Fields" },
+          "design": { "$ref": "#/components/schemas/Design" },
+          "export": { "$ref": "#/components/schemas/Export" }
+        }
+      },
+      "CheckResult": {
+        "type": "object",
+        "properties": {
+          "payload": { "type": "string", "description": "the exact text stored in the code" },
+          "summary": { "type": "string", "example": "QR version 2, 25x25 modules, ECC M" },
+          "decoded": { "type": "boolean" },
+          "ok": { "type": "boolean", "description": "true when there are no warnings" },
+          "contrast": { "type": "number" },
+          "warnings": { "type": "array", "items": { "type": "string" } },
+          "notes": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "Code": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "type": { "type": "string" },
+          "fields": { "$ref": "#/components/schemas/Fields" },
+          "design": { "$ref": "#/components/schemas/Design" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CodeInput": {
+        "type": "object",
+        "description": "For POST, type and fields are required. For PATCH, send only what changes.",
+        "properties": {
+          "name": { "type": "string", "description": "named automatically when empty" },
+          "type": { "type": "string" },
+          "fields": { "$ref": "#/components/schemas/Fields" },
+          "design": { "$ref": "#/components/schemas/Design" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "Preset": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "design": { "$ref": "#/components/schemas/Design" },
+          "builtin": { "type": "boolean" }
+        }
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Error",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Image": {
+        "description": "The image",
+        "content": {
+          "image/png": { "schema": { "type": "string", "format": "binary" } },
+          "image/jpeg": { "schema": { "type": "string", "format": "binary" } },
+          "image/svg+xml": { "schema": { "type": "string" } },
+          "application/pdf": { "schema": { "type": "string", "format": "binary" } },
+          "application/postscript": { "schema": { "type": "string" } }
+        }
+      }
+    },
+    "parameters": {
+      "id": { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+    }
+  },
+  "paths": {
+    "/openapi.json": {
+      "get": { "summary": "This document", "security": [], "responses": { "200": { "description": "OpenAPI 3 document" } } }
+    },
+    "/types": {
+      "get": { "summary": "Content types and their fields", "responses": { "200": { "description": "List of types" } } }
+    },
+    "/styles": {
+      "get": { "summary": "Allowed shapes, frames, fonts, icons, pages and formats", "responses": { "200": { "description": "Style options" } } }
+    },
+    "/render": {
+      "post": {
+        "summary": "Render a code without saving it",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RenderRequest" } } } },
+        "responses": { "200": { "$ref": "#/components/responses/Image" }, "422": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/check": {
+      "post": {
+        "summary": "Validate content and design and run the scannability check",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RenderRequest" } } } },
+        "responses": {
+          "200": { "description": "Check result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CheckResult" } } } },
+          "422": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/codes": {
+      "get": {
+        "summary": "List saved codes",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "search names and content" },
+          { "name": "type", "in": "query", "schema": { "type": "string" } },
+          { "name": "tag", "in": "query", "schema": { "type": "string" } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["updated", "created", "name"] } }
+        ],
+        "responses": { "200": { "description": "Codes", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Code" } } } } } }
+      },
+      "post": {
+        "summary": "Save a code to the library",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CodeInput" } } } },
+        "responses": {
+          "201": { "description": "Saved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Code" } } } },
+          "422": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/codes/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/id" }],
+      "get": {
+        "summary": "Get a saved code",
+        "responses": { "200": { "description": "Code", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Code" } } } }, "404": { "$ref": "#/components/responses/Error" } }
+      },
+      "patch": {
+        "summary": "Change a saved code",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CodeInput" } } } },
+        "responses": {
+          "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Code" } } } },
+          "404": { "$ref": "#/components/responses/Error" },
+          "422": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "delete": { "summary": "Delete a saved code", "responses": { "204": { "description": "Deleted" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/codes/{id}/image": {
+      "parameters": [
+        { "$ref": "#/components/parameters/id" },
+        { "name": "format", "in": "query", "schema": { "type": "string", "enum": ["png", "jpeg", "svg", "pdf", "eps"] } },
+        { "name": "size", "in": "query", "schema": { "type": "integer" } },
+        { "name": "quality", "in": "query", "schema": { "type": "integer" } },
+        { "name": "page", "in": "query", "schema": { "type": "string" } },
+        { "name": "printMM", "in": "query", "schema": { "type": "number" } },
+        { "name": "download", "in": "query", "schema": { "type": "boolean" }, "description": "add a Content-Disposition attachment header" }
+      ],
+      "get": { "summary": "Render a saved code", "responses": { "200": { "$ref": "#/components/responses/Image" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/presets": {
+      "get": { "summary": "List presets", "responses": { "200": { "description": "Presets", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Preset" } } } } } } },
+      "post": {
+        "summary": "Save a preset",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "design"], "properties": { "name": { "type": "string" }, "design": { "$ref": "#/components/schemas/Design" } } } } } },
+        "responses": { "201": { "description": "Saved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Preset" } } } }, "422": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/presets/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/id" }],
+      "delete": { "summary": "Delete one of your presets", "responses": { "204": { "description": "Deleted" }, "403": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/assets": {
+      "post": {
+        "summary": "Upload a logo (PNG, JPEG or SVG, up to 5 MB); use the returned logo value in a design",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": { "schema": { "type": "object", "properties": { "file": { "type": "string", "format": "binary" } } } },
+            "image/png": { "schema": { "type": "string", "format": "binary" } },
+            "image/jpeg": { "schema": { "type": "string", "format": "binary" } },
+            "image/svg+xml": { "schema": { "type": "string" } }
+          }
+        },
+        "responses": {
+          "201": { "description": "Stored", "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "string" }, "logo": { "type": "string", "example": "asset:3f2a9c1b7d4e" } } } } } },
+          "422": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/batch": {
+      "post": {
+        "summary": "Generate many codes from a CSV; returns a ZIP with the images and report.csv",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["file"],
+                "properties": {
+                  "file": { "type": "string", "format": "binary", "description": "CSV with a header row named after content fields, plus optional type and name columns" },
+                  "type": { "type": "string", "description": "content type for rows without a type column" },
+                  "map": { "type": "string", "description": "rename columns, e.g. Website=url,Network=ssid" },
+                  "preset": { "type": "string", "description": "preset ID for the design" },
+                  "design": { "type": "string", "description": "Design as JSON (overrides preset)" },
+                  "export": { "type": "string", "description": "Export options as JSON" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ZIP archive; X-Canute-Summary gives ok, warnings and failed counts",
+            "headers": { "X-Canute-Summary": { "schema": { "type": "string", "example": "ok=2 warnings=0 failed=1" } } },
+            "content": { "application/zip": { "schema": { "type": "string", "format": "binary" } } }
+          },
+          "422": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  }
+}
