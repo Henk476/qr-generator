@@ -4,6 +4,11 @@ Static QR codes and barcodes, made locally. No ads, no accounts, no tracking, no
 Written in Go and shipped as a single binary for Windows, macOS and Linux. See [SPEC.md](SPEC.md)
 for the full specification.
 
+**Free and open source.** Canute's QR Generator is released under the
+[Apache License 2.0](LICENSE). Anyone may use it, for personal or commercial purposes, and may
+study, change and share it. There is no paid version and no sign-up. See [License](#license) for
+the details.
+
 **What it does**
 
 - **13 content types:** link, text, e-mail, call, SMS, WhatsApp, Wi-Fi, vCard, calendar event,
@@ -100,7 +105,32 @@ go vet ./...
 
 Releases are built by GoReleaser (`.goreleaser.yaml`) when a `v*` tag is pushed.
 
+## Contributing
+
+Contributions are welcome. Open an issue to report a bug or suggest a feature, or send a pull
+request. Run `go test ./...` and `go vet ./...` before submitting. Unless you say otherwise,
+contributions are accepted under the same Apache 2.0 license (section 5 of the license).
+
 ## License
 
-Apache 2.0 (see [LICENSE](LICENSE)). The bundled Libre Baskerville font is under the SIL Open
-Font License; see `internal/render/fonts/`.
+Canute's QR Generator is open source software under the [Apache License 2.0](LICENSE).
+
+You may:
+
+- **use** it for any purpose, including commercial use;
+- **change** it and build on it;
+- **share** it, changed or unchanged, as source code or as a built program;
+- **sell** products or services that include it.
+
+When you redistribute it, include a copy of the license and keep its copyright and license
+notices; if you changed files, say so in those files. The license also grants a patent license
+from contributors. The software comes without warranty. The full terms are in [LICENSE](LICENSE).
+
+The codes and images you make with it are yours. The license does not apply to them.
+
+Third-party parts keep their own permissive licenses:
+
+- The bundled Libre Baskerville font is under the SIL Open Font License 1.1 (see
+  `internal/render/fonts/`).
+- The Go libraries compiled into the program (listed in `go.mod`) are under the MIT or BSD
+  licenses.
