@@ -109,7 +109,7 @@ func (s *Server) handleBulkPost(w http.ResponseWriter, r *http.Request) {
 
 	var buf bytes.Buffer
 	results, err := batch.Generate(&buf, rows, batch.Options{
-		Design: design, Assets: s.assetLoader(ctx), Verify: true,
+		Design: design, Assets: s.assetLoader(ctx), Fonts: s.fontLoader(ctx), Verify: true,
 		Export: render.Options{Format: format, Size: f.Size, PrintMM: f.PrintMM},
 	})
 	if err != nil {
@@ -179,7 +179,8 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		fail(s.tr(r, "Restore failed:") + " " + err.Error())
 		return
 	}
-	// Restored logos may reuse IDs with different content.
+	// Restored logos and fonts may reuse IDs with different content.
 	s.logoCache.Range(func(k, _ any) bool { s.logoCache.Delete(k); return true })
+	s.fontCache.Range(func(k, _ any) bool { s.fontCache.Delete(k); return true })
 	http.Redirect(w, r, fmt.Sprintf("/settings?restored=%d,%d,%d", stats.Codes, stats.Presets, stats.Logos), http.StatusSeeOther)
 }

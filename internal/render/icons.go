@@ -152,7 +152,7 @@ func iconPayment() Path {
 }
 
 func iconBitcoin() Path {
-	b := textInBox("B", "sans", Rect{3, 3.5, 18, 17}, 1)
+	b := textInBox("B", fontFor("sans"), Rect{3, 3.5, 18, 17}, 1)
 	bb := b.Bounds()
 	x1, x2 := bb.X+bb.W*.3, bb.X+bb.W*.55
 	return union(b,

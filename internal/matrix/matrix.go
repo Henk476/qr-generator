@@ -80,6 +80,7 @@ func Build(payload string, opts Options) (*Matrix, error) {
 	}
 	q.DisableBorder = true
 	bm := q.Bitmap()
+	chooseBestMask(bm, q.VersionNumber, opts.Level, payload)
 	return &Matrix{Version: q.VersionNumber, Level: opts.Level, Size: len(bm), dark: bm}, nil
 }
 

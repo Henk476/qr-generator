@@ -90,7 +90,8 @@ func translatable(t *testing.T) []string {
 		add(p.Name)
 	}
 	// Page titles set by handlers.
-	for _, title := range []string{"New code", "Edit code", "Library", "Bulk", "Presets", "Settings"} {
+	for _, title := range []string{"New code", "Edit code", "Library", "Bulk", "Presets", "Settings",
+		"Top left", "Top right", "Bottom left"} { // page titles and per-corner labels
 		add(title)
 	}
 

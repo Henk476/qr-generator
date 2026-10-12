@@ -262,3 +262,8 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 .field-list { padding-left: 18px; margin: 4px 0; color: var(--muted); }
 
 .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 13px; }
+
+/* Per-corner styling */
+.eye-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 10px; }
+.eye-slot { display: grid; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 0; }
+.eye-slot legend { font-weight: 600; font-size: 14px; padding: 0 4px; margin: 0; }

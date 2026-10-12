@@ -113,6 +113,28 @@
             <input name="eye_inner_color" type="color" value="{{.EyeInnerHex}}" aria-label="{{t "Center color"}}" data-when="eye_inner_custom" data-is="*">
           </div>
         </div>
+        <label class="check"><input type="checkbox" name="eyes_custom" value="1"{{if .EyesCustom}} checked{{end}}> {{t "Style each corner separately"}}</label>
+        <div class="eye-grid" data-when="eyes_custom" data-is="*">
+          {{range $s := .EyeSlots}}
+          <fieldset class="eye-slot">
+            <legend>{{t $s.Label}}</legend>
+            <label for="eye{{$s.N}}_outer">{{t "Border"}}</label>
+            <select id="eye{{$s.N}}_outer" name="eye{{$s.N}}_outer">
+              <option value="">{{t "Same as above"}}</option>
+              {{range $.Opts.EyeOuters}}<option value="{{.Value}}"{{if eq .Value $s.Outer}} selected{{end}}>{{t .Label}}</option>{{end}}
+            </select>
+            <label for="eye{{$s.N}}_inner">{{t "Center"}}</label>
+            <select id="eye{{$s.N}}_inner" name="eye{{$s.N}}_inner">
+              <option value="">{{t "Same as above"}}</option>
+              {{range $.Opts.EyeInners}}<option value="{{.Value}}"{{if eq .Value $s.Inner}} selected{{end}}>{{t .Label}}</option>{{end}}
+            </select>
+            <label class="check"><input type="checkbox" name="eye{{$s.N}}_outer_custom" value="1"{{if $s.OuterColor}} checked{{end}}> {{t "Own border color"}}</label>
+            <input name="eye{{$s.N}}_outer_color" type="color" value="{{$s.OuterHex}}" aria-label="{{t "Border color"}}" data-when="eye{{$s.N}}_outer_custom" data-is="*">
+            <label class="check"><input type="checkbox" name="eye{{$s.N}}_inner_custom" value="1"{{if $s.InnerColor}} checked{{end}}> {{t "Own center color"}}</label>
+            <input name="eye{{$s.N}}_inner_color" type="color" value="{{$s.InnerHex}}" aria-label="{{t "Center color"}}" data-when="eye{{$s.N}}_inner_custom" data-is="*">
+          </fieldset>
+          {{end}}
+        </div>
       </fieldset>
 
       <fieldset class="group">
@@ -159,7 +181,16 @@
             <label for="frame_font">{{t "Font"}}</label>
             <select id="frame_font" name="frame_font">
               {{range .Opts.Fonts}}<option value="{{.Value}}"{{if eq .Value $.Design.FrameFont}} selected{{end}}>{{t .Label}}</option>{{end}}
+              {{if .UploadedFont}}<option value="{{.Design.FrameFont}}" selected>{{t "Uploaded:"}} {{.FontName}}</option>{{end}}
             </select>
+          </div>
+          <div class="field field-wide" data-when="frame" data-is="*">
+            <label for="font_file">{{t "Upload a font (TTF or OTF, up to 10 MB)"}}</label>
+            <div class="inline">
+              <input id="font_file" name="font_file" type="file" accept=".ttf,.otf,font/ttf,font/otf" data-autosubmit="upload-font" data-nopreview>
+              <button type="submit" name="action" value="upload-font" class="btn js-hide" id="upload-font">{{t "Upload"}}</button>
+            </div>
+            <small class="hint">{{t "Make sure the font's license allows embedding it in images you share."}}</small>
           </div>
           <div class="field" data-when="frame" data-is="*">
             <label for="frame_color">{{t "Frame color"}}</label>

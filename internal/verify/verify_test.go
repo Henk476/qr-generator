@@ -28,7 +28,10 @@ var samples = map[string]map[string]string{
 		"street": "1 Shore Rd", "city": "Bosham", "country": "England", "note": "Prefers dry feet"},
 	"event": {"title": "Tide demonstration", "start": "2026-10-11 10:00", "tz": "Europe/London",
 		"location": "Bosham beach", "description": "Bring towels"},
-	"barcode": {"symbology": "datamatrix", "value": "CANUTE-1016"},
+	"barcode":  {"symbology": "datamatrix", "value": "CANUTE-1016"},
+	"location": {"latitude": "50.8304", "longitude": "-0.8579", "label": "Bosham shore"},
+	"paypal":   {"username": "canute", "amount": "12.50", "currency": "GBP"},
+	"crypto":   {"currency": "bitcoin", "address": "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", "amount": "0.001", "message": "Tide fund"},
 }
 
 func render1(t *testing.T, payload string, opts matrix.Options, s render.Style) *render.Scene {

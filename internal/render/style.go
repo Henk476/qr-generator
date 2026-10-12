@@ -83,6 +83,15 @@ var Fonts = []Option{
 // MaxFrameText is the longest frame phrase, in characters.
 const MaxFrameText = 30
 
+// EyeStyle overrides the look of one finder pattern.
+type EyeStyle struct {
+	Outer, Inner           string // shapes; "" = the code's eye shape
+	OuterColor, InnerColor *Color // nil = the code's eye color
+}
+
+// EyeNames names the finder patterns in PerEye order.
+var EyeNames = [3]string{"top-left", "top-right", "bottom-left"}
+
 // Logo is an image or built-in icon in the middle of the code.
 type Logo struct {
 	Image image.Image // an uploaded image, or nil
@@ -99,6 +108,7 @@ type Frame struct {
 	Kind      string
 	Text      string
 	Font      string
+	Custom    *Font // an uploaded font, used instead of Font
 	Color     color.NRGBA
 	TextColor color.NRGBA
 }
@@ -116,6 +126,9 @@ type Style struct {
 	// Eye colors; nil means "same as the foreground" (gradient included).
 	EyeOuterColor *color.NRGBA
 	EyeInnerColor *color.NRGBA
+	// PerEye overrides the eye settings for the top-left, top-right and
+	// bottom-left finder patterns; empty fields inherit the values above.
+	PerEye [3]EyeStyle
 
 	Logo  *Logo
 	Frame *Frame
@@ -162,6 +175,14 @@ func (s Style) Validate() error {
 			return err
 		}
 	}
+	for i, e := range s.PerEye {
+		if err := checkOption(fmt.Sprintf("%s eye border shape", EyeNames[i]), e.Outer, EyeOuterShapes); err != nil {
+			return err
+		}
+		if err := checkOption(fmt.Sprintf("%s eye center shape", EyeNames[i]), e.Inner, EyeInnerShapes); err != nil {
+			return err
+		}
+	}
 	if l := s.Logo; l != nil {
 		if l.Image == nil && !slices.Contains(IconNames(), l.Icon) {
 			return fmt.Errorf("unknown icon %q (valid: %s)", l.Icon, strings.Join(IconNames(), ", "))
@@ -174,8 +195,10 @@ func (s Style) Validate() error {
 		if err := checkOption("frame", f.Kind, Frames); err != nil {
 			return err
 		}
-		if err := checkOption("font", f.Font, Fonts); err != nil {
-			return err
+		if f.Custom == nil {
+			if err := checkOption("font", f.Font, Fonts); err != nil {
+				return err
+			}
 		}
 		if n := utf8.RuneCountInString(f.Text); n > MaxFrameText {
 			return fmt.Errorf("frame text must be at most %d characters, got %d", MaxFrameText, n)

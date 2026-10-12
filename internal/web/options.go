@@ -73,3 +73,24 @@ func (s *Server) assetLoader(ctx context.Context) generate.AssetLoader {
 		return img, nil
 	}
 }
+
+// fontLoader resolves uploaded frame fonts, caching parsed fonts.
+func (s *Server) fontLoader(ctx context.Context) generate.FontLoader {
+	return func(id string) (*render.Font, error) {
+		if f, ok := s.fontCache.Load(id); ok {
+			return f.(*render.Font), nil
+		}
+		a, err := s.store.GetAsset(ctx, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, errors.New("the uploaded font no longer exists; upload it again")
+		} else if err != nil {
+			return nil, err
+		}
+		f, err := render.ParseFont(a.Data)
+		if err != nil {
+			return nil, err
+		}
+		s.fontCache.Store(id, f)
+		return f, nil
+	}
+}

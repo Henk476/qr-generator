@@ -151,6 +151,7 @@ type Result struct {
 type Options struct {
 	Design generate.Design
 	Assets generate.AssetLoader
+	Fonts  generate.FontLoader
 	Export render.Options
 	Verify bool // run the scannability check on each code
 }
@@ -214,7 +215,7 @@ func renderRow(row Row, opts Options) ([]byte, Result) {
 		return nil, res
 	}
 	res.Type = t
-	code, err := generate.Prepare(generate.Request{Type: t.Name, Fields: row.Fields, Design: opts.Design, Assets: opts.Assets})
+	code, err := generate.Prepare(generate.Request{Type: t.Name, Fields: row.Fields, Design: opts.Design, Assets: opts.Assets, Fonts: opts.Fonts})
 	if err != nil {
 		res.Err = err
 		return nil, res

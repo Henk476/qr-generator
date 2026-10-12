@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -550,4 +551,38 @@ func TestAPIMountedWithToken(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/codes", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 	wantStatus(t, a.do(req), http.StatusUnauthorized)
+}
+
+func TestPerCornerStylingAndFontUpload(t *testing.T) {
+	a := newTestApp(t)
+	rec := a.post("/preview", editorForm("preview", "eye_outer", "circle", "eyes_custom", "1",
+		"eye2_outer", "square", "eye2_inner", "star", "eye3_inner_custom", "1", "eye3_inner_color", "#c02020"))
+	wantBody(t, rec, "<svg", `fill="#c02020"`, "Scan check passed")
+
+	// Saving keeps the overrides; unticking the switch clears them.
+	rec = a.post("/new", editorForm("save", "eyes_custom", "1", "eye1_inner", "circle"))
+	wantStatus(t, rec, http.StatusSeeOther)
+	loc := rec.Header().Get("Location")
+	id := strings.TrimSuffix(strings.TrimPrefix(loc, "/codes/"), "?saved")
+	c, _ := a.store.GetCode(context.Background(), id)
+	if c.Design.Eyes[0].Inner != "circle" {
+		t.Fatalf("eyes not saved: %+v", c.Design.Eyes)
+	}
+	wantBody(t, a.get(loc), `name="eyes_custom" value="1" checked`, `value="circle" selected`)
+	wantStatus(t, a.post("/codes/"+id, editorForm("save")), http.StatusSeeOther)
+	c, _ = a.store.GetCode(context.Background(), id)
+	if c.Design.Eyes != [3]generate.EyeOverride{} {
+		t.Errorf("eyes not cleared: %+v", c.Design.Eyes)
+	}
+
+	font, err := os.ReadFile(filepath.Join("..", "render", "fonts", "LibreBaskerville-Bold.ttf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec = a.multipartPost("/new", editorForm("upload-font", "frame", "label"), "font_file", "fancy.ttf", font)
+	wantStatus(t, rec, http.StatusOK)
+	wantBody(t, rec, "Font uploaded", "Uploaded: Libre Baskerville", "<svg")
+	rec = a.multipartPost("/new", editorForm("upload-font", "frame", "label"), "font_file", "x.ttf", []byte("nope"))
+	wantStatus(t, rec, http.StatusUnprocessableEntity)
+	wantBody(t, rec, "not a TrueType or OpenType font")
 }

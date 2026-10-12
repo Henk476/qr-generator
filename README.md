@@ -6,11 +6,12 @@ for the full specification.
 
 **What it does**
 
-- **10 content types:** link, text, e-mail, call, SMS, WhatsApp, Wi-Fi, vCard, calendar event,
-  and barcodes (Data Matrix, PDF417, Aztec, Code 128, EAN-13, UPC-A).
-- **Design:** 9 module shapes, 5 corner-border and 6 corner-center shapes, linear and radial
-  gradients, 15 built-in logo icons or your own PNG/JPEG/SVG logo, and 9 frames with a
-  call-to-action phrase in sans-serif, serif or monospace.
+- **13 content types:** link, text, e-mail, call, SMS, WhatsApp, Wi-Fi, vCard, calendar event,
+  map location, PayPal.me, crypto payment (Bitcoin, Ethereum, Litecoin, with address checksum
+  verification), and barcodes (Data Matrix, PDF417, Aztec, Code 128, EAN-13, UPC-A).
+- **Design:** 9 module shapes, 5 corner-border and 6 corner-center shapes (optionally styled per
+  corner), linear and radial gradients, 15 built-in logo icons or your own PNG/JPEG/SVG logo,
+  and 9 frames with a call-to-action phrase in sans-serif, serif, monospace or your own font.
 - **Export:** PNG, JPEG, SVG, PDF (A4, Letter or fit-to-code) and EPS, with no watermark.
 - **Scan check:** every code is decoded after rendering, and you are warned about low
   contrast, light-on-dark colors, a thin quiet zone or a too-small export.

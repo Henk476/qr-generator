@@ -40,13 +40,20 @@
           "eyeInner": { "type": "string", "example": "circle" },
           "eyeOuterColor": { "type": "string" },
           "eyeInnerColor": { "type": "string" },
+          "eyes": {
+            "type": "array", "minItems": 3, "maxItems": 3,
+            "description": "Per-corner overrides: top-left, top-right, bottom-left. Empty fields inherit the settings above.",
+            "items": { "type": "object", "properties": {
+              "outer": { "type": "string" }, "inner": { "type": "string" },
+              "outerColor": { "type": "string" }, "innerColor": { "type": "string" } } }
+          },
           "logo": { "type": "string", "description": "icon:<name> or asset:<id> from POST /assets", "example": "icon:wifi" },
           "logoSize": { "type": "integer", "minimum": 10, "maximum": 30, "description": "percent of the code width; 0 = 22" },
           "logoKeepModules": { "type": "boolean" },
           "logoCircle": { "type": "boolean" },
           "frame": { "type": "string", "example": "banner-bottom" },
           "frameText": { "type": "string", "maxLength": 30 },
-          "frameFont": { "type": "string", "enum": ["", "sans", "serif", "mono"] },
+          "frameFont": { "type": "string", "description": "sans, serif, mono, or asset:<id> from POST /fonts" },
           "frameColor": { "type": "string" },
           "frameTextColor": { "type": "string" }
         }
@@ -239,6 +246,23 @@
         },
         "responses": {
           "201": { "description": "Stored", "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "string" }, "logo": { "type": "string", "example": "asset:3f2a9c1b7d4e" } } } } } },
+          "422": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/fonts": {
+      "post": {
+        "summary": "Upload a TTF or OTF font (up to 10 MB) for frame text; use the returned font value as design.frameFont",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": { "schema": { "type": "object", "properties": { "file": { "type": "string", "format": "binary" } } } },
+            "font/ttf": { "schema": { "type": "string", "format": "binary" } },
+            "font/otf": { "schema": { "type": "string", "format": "binary" } }
+          }
+        },
+        "responses": {
+          "201": { "description": "Stored", "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "string" }, "font": { "type": "string", "example": "asset:3f2a9c1b7d4e" }, "name": { "type": "string" } } } } } },
           "422": { "$ref": "#/components/responses/Error" }
         }
       }

@@ -258,3 +258,30 @@ func TestBackupRestoreCommands(t *testing.T) {
 		t.Errorf("missing backup: exit %d", code)
 	}
 }
+
+func TestGenerateStretchFeatures(t *testing.T) {
+	dir := t.TempDir()
+	font := filepath.Join("..", "..", "internal", "render", "fonts", "LibreBaskerville-Bold.ttf")
+	cases := [][]string{
+		{"--type", "location", "--latitude", "50.8304", "--longitude", "-0.8579", "--label", "Bosham"},
+		{"--type", "paypal", "--data", "canute", "--amount", "5", "--currency", "GBP"},
+		{"--type", "crypto", "--currency", "bitcoin", "--address", "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"},
+		{"--data", "example.com", "--eye-border", "circle", "--eye-2-border", "square", "--eye-2-center", "star",
+			"--eye-3-center-color", "#c02020", "--frame", "label", "--frame-font", font, "--frame-text", "Scan the tide"},
+	}
+	for _, args := range cases {
+		out := filepath.Join(dir, "x.png")
+		code, _, stderr := runCLI(append([]string{"generate", "--strict", "-o", out}, args...)...)
+		if code != 0 {
+			t.Errorf("%v: exit %d %s", args, code, stderr)
+		}
+	}
+	code, _, stderr := runCLI("generate", "--data", "a.com", "--frame", "label", "--frame-font", filepath.Join(dir, "missing.ttf"), "-o", filepath.Join(dir, "y.png"))
+	if code != 1 || !strings.Contains(stderr, "--frame-font") {
+		t.Errorf("missing font file: exit %d %s", code, stderr)
+	}
+	code, _, stderr = runCLI("generate", "--type", "crypto", "--currency", "bitcoin", "--address", "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN3", "-o", filepath.Join(dir, "z.png"))
+	if code != 1 || !strings.Contains(stderr, "checksum") {
+		t.Errorf("bad address: exit %d %s", code, stderr)
+	}
+}

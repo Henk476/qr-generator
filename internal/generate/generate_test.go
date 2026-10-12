@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Henk476/qr-generator/internal/render"
+	"golang.org/x/image/font/gofont/goregular"
 )
 
 func TestPrepareAndExport(t *testing.T) {
@@ -128,5 +129,51 @@ func TestNormalize(t *testing.T) {
 	want.Frame, want.Logo = "border", "icon:star"
 	if got := d.Normalize(); got != want {
 		t.Errorf("Normalize = %+v, want %+v", got, want)
+	}
+}
+
+func TestEyeOverridesAndCustomFont(t *testing.T) {
+	d := DefaultDesign()
+	d.Eyes[2] = EyeOverride{Outer: "circle", InnerColor: "#c02020"}
+	d.Frame, d.FrameFont = "label", "asset:f1"
+	var asked string
+	loader := func(id string) (*render.Font, error) {
+		asked = id
+		return render.ParseFont(goregular.TTF)
+	}
+	code, err := Prepare(Request{Type: "url", Fields: map[string]string{"url": "a.com"}, Design: d, Fonts: loader})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asked != "f1" {
+		t.Errorf("font loader asked for %q", asked)
+	}
+	if r := code.Verify(1024); !r.Match {
+		t.Errorf("styled code does not decode: %v", r.Warnings)
+	}
+	b, _ := json.Marshal(d)
+	if !strings.Contains(string(b), `"eyes":[{},{},{"outer":"circle","innerColor":"#c02020"}]`) {
+		t.Errorf("eyes JSON = %s", b)
+	}
+
+	bad := DefaultDesign()
+	bad.Eyes[0].Inner = "blob"
+	if err := bad.Validate(); err == nil || !strings.Contains(err.Error(), "top-left") {
+		t.Errorf("bad eye override: %v", err)
+	}
+	bad = DefaultDesign()
+	bad.Eyes[1].OuterColor = "nope"
+	if err := bad.Validate(); err == nil || !strings.Contains(err.Error(), "top-right eye border color") {
+		t.Errorf("bad eye color: %v", err)
+	}
+	bad = DefaultDesign()
+	bad.Frame, bad.FrameFont = "label", "asset:"
+	if err := bad.Validate(); err == nil {
+		t.Error("empty font reference accepted")
+	}
+	_, err = Prepare(Request{Type: "url", Fields: map[string]string{"url": "a.com"}, Design: d,
+		Fonts: func(string) (*render.Font, error) { return nil, errors.New("gone") }})
+	if err == nil || !strings.Contains(err.Error(), "frame font: gone") {
+		t.Errorf("missing font: %v", err)
 	}
 }

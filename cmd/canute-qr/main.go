@@ -160,11 +160,11 @@ func runGenerate(args []string, stdout, stderr io.Writer) int {
 		return fail(err)
 	}
 
-	design, assets, err := style.resolve()
+	res, err := style.resolve()
 	if err != nil {
 		return fail(err)
 	}
-	code, err := generate.Prepare(generate.Request{Type: typ.Name, Fields: values, Design: design, Assets: assets})
+	code, err := generate.Prepare(generate.Request{Type: typ.Name, Fields: values, Design: res.design, Assets: res.assets, Fonts: res.fonts})
 	if err != nil {
 		return fail(err)
 	}

@@ -139,12 +139,12 @@ func TestFramesGrowCanvas(t *testing.T) {
 }
 
 func TestTextOutline(t *testing.T) {
-	p := textInBox("SCAN ME", "sans", Rect{0, 0, 100, 20}, 0.5)
+	p := textInBox("SCAN ME", fontFor("sans"), Rect{0, 0, 100, 20}, 0.5)
 	b := p.Bounds()
 	if b.W <= 0 || b.X < 0 || b.X+b.W > 100.01 || b.Y < 0 || b.Y+b.H > 20.01 {
 		t.Fatalf("text bounds %+v outside box", b)
 	}
-	if long := textInBox(strings.Repeat("W", 30), "mono", Rect{0, 0, 50, 20}, 0.5); long.Bounds().W > 50.01 {
+	if long := textInBox(strings.Repeat("W", 30), fontFor("mono"), Rect{0, 0, 50, 20}, 0.5); long.Bounds().W > 50.01 {
 		t.Errorf("long text not shrunk to fit: %+v", long.Bounds())
 	}
 }
@@ -395,7 +395,7 @@ func TestEveryFontLoadsAndDiffers(t *testing.T) {
 		if fontFor(f.Value) == nil {
 			t.Fatalf("font %s did not load", f.Value)
 		}
-		p, w, capH := textOutline("Scan Me", f.Value)
+		p, w, capH := textOutline("Scan Me", fontFor(f.Value))
 		if p.Empty() || w <= 0 || capH <= 0 {
 			t.Errorf("font %s: empty outline (w=%v cap=%v)", f.Value, w, capH)
 		}
@@ -403,5 +403,53 @@ func TestEveryFontLoadsAndDiffers(t *testing.T) {
 			t.Errorf("fonts %s and %s produce identical widths: fallback in use?", f.Value, other)
 		}
 		widths[w] = f.Value
+	}
+}
+
+func TestPerEyeOverrides(t *testing.T) {
+	m := testMatrix(t)
+	red := color.NRGBA{0xc0, 0x20, 0x20, 255}
+	s := DefaultStyle()
+	s.EyeOuter = "circle"
+	s.PerEye[1] = EyeStyle{Outer: "square", Inner: "star", InnerColor: &red}
+	sc, err := BuildScene(m, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Items: modules, then outer+inner for each of the three eyes.
+	eyes := sc.Items[1:7]
+	if eyes[0].Snap || !eyes[2].Snap { // top-left inherits circle, top-right overrides to square
+		t.Error("eye border overrides not applied")
+	}
+	if eyes[3].Paint.Color != red || eyes[1].Paint.Color == red {
+		t.Error("eye center color override applied to the wrong eye")
+	}
+	s.PerEye[2].Outer = "hexagon"
+	if s.Validate() == nil || !strings.Contains(s.Validate().Error(), "bottom-left") {
+		t.Errorf("bad override error = %v", s.Validate())
+	}
+}
+
+func TestParseFont(t *testing.T) {
+	f, err := ParseFont(libreBaskervilleBold)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.Name(), "Baskerville") {
+		t.Errorf("name %q", f.Name())
+	}
+	s := DefaultStyle()
+	s.Frame = &Frame{Kind: "label", Text: "Scan", Font: "custom", Custom: f, Color: color.NRGBA{0, 0, 0, 255}}
+	if _, err := BuildScene(testMatrix(t), s); err != nil {
+		t.Fatalf("custom font frame: %v", err)
+	}
+	for name, data := range map[string][]byte{
+		"garbage":   []byte("not a font at all"),
+		"too large": make([]byte, MaxFontBytes+1),
+		"truncated": libreBaskervilleBold[:2000],
+	} {
+		if _, err := ParseFont(data); err == nil {
+			t.Errorf("%s: expected error", name)
+		}
 	}
 }
